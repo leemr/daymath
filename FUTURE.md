@@ -8,15 +8,15 @@ Checked-in backlog. Not a promise of order. Session handoff stays in local `todo
 - **OpenSSF Scorecard** badge once the repo has enough workflow history to score usefully.
 - **`enforce_admins: true`** on branch protection if you want even your own merge/push to wait on CI (today: required checks for merges, admins can still bypass in a pinch).
 
-Done already: `SECURITY.md`, Dependabot, CI on Node 18/20/22, `CHANGELOG.md`, GitHub Releases, **master protected** (no force-push/delete; require status checks Node 18/20/22, strict; PR reviews not required; external fork PRs still open).
+Done already: `SECURITY.md`, Dependabot, CI on Node **18/20/22/24/26** (coverage on 24), `CHANGELOG.md`, GitHub Releases, **master protected** (no force-push/delete; require those Node checks, strict; PR reviews not required; external fork PRs still open).
 
 ## Discoverability (later)
 
 - **Awesome lists** — not `awesome-daymath`. Open a PR to an existing list when the API feels stable, e.g. [awesome-javascript](https://github.com/sorrycc/awesome-javascript) (Date section) or Temporal-related lists. Pitch: “ISO calendar day math, date-fns-shaped names, no Date/TZ.”
 - **CDN one-liner** already on the play page; optional README badge for jsDelivr/unpkg hits.
-- **Social preview / og:image** — GitHub: repo Settings → General → Social preview (upload PNG ~1280×640). Pages: `<meta property="og:image">` on `docs/index.html`. Free to make (Figma, or any generator); not required for npm.
+- **GitHub repo Social preview upload** — Pages already uses `docs/og.png` via og meta. For the *repo* unfurl (github.com/leemr/daymath links in Slack), upload the same PNG once: Settings → General → Social preview. (API cannot set this easily.)
 
-Done already: topics, homepage URL, badges, `llms.txt`, short README.
+Done already: topics, homepage URL, badges, `llms.txt`, short README, **`docs/og.png`** (1200×630) + og/twitter meta on the play page. Source card: `docs/og-card.html` (re-render with headless Chrome).
 
 ## Bundle size (client)
 

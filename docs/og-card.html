@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        width: 1200px;
+        height: 630px;
+        overflow: hidden;
+        font-family:
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          Segoe UI,
+          sans-serif;
+        background: #0b1018;
+        color: #e7ecf3;
+      }
+      .frame {
+        width: 1200px;
+        height: 630px;
+        position: relative;
+        background:
+          radial-gradient(ellipse 80% 70% at 15% 20%, #1a3a5c 0%, transparent 55%),
+          radial-gradient(ellipse 60% 50% at 90% 80%, #0d3d32 0%, transparent 50%),
+          linear-gradient(145deg, #0b1018 0%, #121a28 50%, #0f1620 100%);
+        padding: 72px 80px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+      }
+      .grid {
+        position: absolute;
+        inset: 0;
+        background-image:
+          linear-gradient(rgba(91, 159, 212, 0.06) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(91, 159, 212, 0.06) 1px, transparent 1px);
+        background-size: 48px 48px;
+        mask-image: radial-gradient(ellipse 70% 60% at 50% 40%, black, transparent);
+        pointer-events: none;
+      }
+      .top {
+        position: relative;
+        z-index: 1;
+      }
+      .pill {
+        display: inline-block;
+        font-size: 20px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: #5b9fd4;
+        border: 1px solid rgba(91, 159, 212, 0.45);
+        background: rgba(91, 159, 212, 0.1);
+        padding: 8px 16px;
+        border-radius: 999px;
+        margin-bottom: 28px;
+      }
+      h1 {
+        font-size: 96px;
+        font-weight: 750;
+        letter-spacing: -0.04em;
+        line-height: 1;
+        margin-bottom: 20px;
+      }
+      h1 span {
+        color: #5b9fd4;
+      }
+      .tag {
+        font-size: 28px;
+        color: #8b9bb4;
+        font-weight: 500;
+        max-width: 36em;
+        line-height: 1.35;
+      }
+      .bottom {
+        position: relative;
+        z-index: 1;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 24px;
+      }
+      .chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+      .chip {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 22px;
+        color: #c5d0e0;
+        background: rgba(26, 35, 50, 0.9);
+        border: 1px solid #2a3548;
+        padding: 10px 18px;
+        border-radius: 10px;
+      }
+      .chip em {
+        font-style: normal;
+        color: #3dcf8e;
+      }
+      .url {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 20px;
+        color: #5a6a82;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="frame">
+      <div class="grid"></div>
+      <div class="top">
+        <div class="pill">npm · open source</div>
+        <h1>day<span>math</span></h1>
+        <p class="tag">
+          ISO 8601 calendar days · date-fns-shaped · no Date, no time zones
+        </p>
+      </div>
+      <div class="bottom">
+        <div class="chips">
+          <span class="chip">addDays(<em>'2026-08-06'</em>, 1)</span>
+          <span class="chip">→ <em>'2026-08-07'</em></span>
+        </div>
+        <div class="url">leemr.github.io/daymath</div>
+      </div>
+    </div>
+  </body>
+</html>
