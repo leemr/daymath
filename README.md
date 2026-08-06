@@ -2,6 +2,7 @@
 
 [![npm](https://img.shields.io/npm/v/daymath.svg)](https://www.npmjs.com/package/daymath)
 [![ci](https://github.com/leemr/daymath/actions/workflows/ci.yml/badge.svg)](https://github.com/leemr/daymath/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/leemr/daymath/graph/badge.svg)](https://codecov.io/gh/leemr/daymath)
 [![license](https://img.shields.io/npm/l/daymath.svg)](./LICENSE)
 [![node](https://img.shields.io/node/v/daymath.svg)](https://www.npmjs.com/package/daymath)
 
@@ -81,8 +82,10 @@ Plain JS + `index.d.ts` (no compile step). CI runs on Node 18, 20, and 22.
 
 ```bash
 npm test
-npm run test:coverage   # 100% on index.js
+npm run test:coverage   # c8: 100% lines/funcs/branches on index.js + lcov
 ```
+
+CI uploads coverage to [Codecov](https://codecov.io/gh/leemr/daymath) (see [CONTRIBUTING.md](./CONTRIBUTING.md) for one-time app/token setup).
 
 PRs welcome via fork — see [CONTRIBUTING.md](./CONTRIBUTING.md). Security reports: [SECURITY.md](./SECURITY.md).
 

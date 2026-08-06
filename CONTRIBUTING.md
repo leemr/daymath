@@ -30,3 +30,17 @@ npm run test:coverage   # expect 100% on index.js
 ## Scope
 
 See [FUTURE.md](./FUTURE.md) for parked ideas. Display/i18n and zoned “now” stay out of daymath on purpose.
+
+## Codecov (maintainer)
+
+CI uploads `coverage/lcov.info` from the Node 24 job. One-time link:
+
+1. Open https://app.codecov.io → sign in with **GitHub**.
+2. Add **leemr/daymath** (install the **Codecov GitHub App** on the repo, or the org).
+3. Optional hard auth: Codecov repo → **Settings** → copy upload token → GitHub repo **Settings → Secrets and variables → Actions** → secret name `CODECOV_TOKEN`.
+4. Push any commit (or re-run CI). Confirm the “Upload coverage to Codecov” step is happy.
+5. Then set `fail_ci_if_error: true` on that step in `.github/workflows/ci.yml` if you want upload failures to fail the build.
+6. Badge (already in README once the project exists on Codecov):  
+   `https://codecov.io/gh/leemr/daymath`
+
+Local 100% gate does **not** need Codecov — only `npm run test:coverage` (c8).

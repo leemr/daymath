@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [master]
 
+permissions:
+  contents: read
+  id-token: write # Codecov OIDC (public repo / GitHub App)
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -22,5 +26,17 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
-      - run: npm run test:coverage
+      - name: Coverage (100% gate + lcov)
         if: matrix.node == 24
+        run: npm run test:coverage
+      - name: Upload coverage to Codecov
+        if: matrix.node == 24
+        uses: codecov/codecov-action@v5
+        with:
+          files: coverage/lcov.info
+          # Optional secret from codecov.io → repo settings → token
+          # Public repos can also use the Codecov GitHub App + OIDC (no token).
+          token: ${{ secrets.CODECOV_TOKEN }}
+          use_oidc: true
+          fail_ci_if_error: false
+          # Set true after Codecov is linked and first upload succeeds.

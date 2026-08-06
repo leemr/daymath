@@ -1,55 +1,62 @@
 # daymath — future work
 
-Checked-in backlog. Not a promise of order. Session handoff stays in local `todo.grok` (gitignored).
+Checked-in backlog. Not a promise of order. Session handoff: local `todo.grok` (gitignored).
 
-## Trust (later)
+---
 
-- **npm provenance** — publish from GitHub Actions with OIDC (`npm publish --provenance`) so the registry links the tarball to a CI run (not a laptop token).
-- **OpenSSF Scorecard** badge once the repo has enough workflow history to score usefully.
-- **`enforce_admins: true`** on branch protection if you want even your own merge/push to wait on CI (today: required checks for merges, admins can still bypass in a pinch).
+## Trust / publish
 
-Done already: `SECURITY.md`, Dependabot, CI on Node **18/20/22/24/26** (coverage on 24), `CHANGELOG.md`, GitHub Releases, **master protected** (no force-push/delete; require those Node checks, strict; PR reviews not required; external fork PRs still open).
+- **npm publish from GitHub Actions + provenance** — `npm publish --provenance` via OIDC to **registry.npmjs.org**. Needs npm trusted publisher / automation token setup. This is **not** what GitHub Packages “npm registry” docs do by default.
+- **GitHub Packages (`npm.pkg.github.com`)** — optional second registry. Does **not** auto-mirror to the public npmjs.com package. Sidebar “No packages published” only means nothing on **GitHub’s** registry. Ignore unless you want `@leemr/daymath` on GH Packages too.
+- **OpenSSF Scorecard** badge once workflows are mature.
+- **`enforce_admins: true`** on branch protection if you want even owner merges to wait on CI (today: required checks; admin can still bypass).
+- **Codecov:** CI upload is wired (`c8` → `lcov` → `codecov-action@v5`). **You** still complete app/token link once (see CONTRIBUTING). Then optionally `fail_ci_if_error: true`.
 
-## Discoverability (later)
+Done already: SECURITY, Dependabot, CI Node 18–26, 100% c8 gate, CHANGELOG, Releases, master protection (checks + no force-push/delete), Codecov upload step + badge URL.
 
-- **Awesome lists** — not `awesome-daymath`. Open a PR to an existing list when the API feels stable, e.g. [awesome-javascript](https://github.com/sorrycc/awesome-javascript) (Date section) or Temporal-related lists. Pitch: “ISO calendar day math, date-fns-shaped names, no Date/TZ.”
-- **CDN one-liner** already on the play page; optional README badge for jsDelivr/unpkg hits.
-- **GitHub repo Social preview upload** — Pages already uses `docs/og.png` via og meta. For the *repo* unfurl (github.com/leemr/daymath links in Slack), upload the same PNG once: Settings → General → Social preview. (API cannot set this easily.)
+---
 
-Done already: topics, homepage URL, badges, `llms.txt`, short README, **`docs/og.png`** (1200×630) + og/twitter meta on the play page. Source card: `docs/og-card.html` (re-render with headless Chrome).
+## Discoverability
+
+- **Awesome-list PR** (not “awesome-daymath”) — e.g. awesome-javascript Date section when API feels stable.
+- **GitHub repo Social preview** — upload `docs/og.png` in Settings → General (UI only). Pages unfurls already use og meta.
+
+Done already: topics, homepage, badges, `llms.txt`, README, Pages play, `docs/og.png`.
+
+---
 
 ## Bundle size (client)
 
-Today we static-import `temporal-polyfill` class API (`globalThis.Temporal ?? polyfill`). Bundlers still ship the polyfill even when native Temporal exists.
+Static `temporal-polyfill` class import still ships polyfill even when native Temporal exists.
 
-Ideas (measure in a real app bundle before rewriting):
+- Dynamic import / optional peer for native Temporal.
+- Or `temporal-polyfill/fns/PlainDate` if fidelity + size hold.
+- Measure in a real app (e.g. itrvl agent) before rewriting.
 
-- Prefer native `Temporal` without pulling polyfill when available (dynamic import / optional peer).
-- Or map surface onto `temporal-polyfill/fns/PlainDate` (~much smaller) if fidelity holds.
-- Keep polyfill as a hard dep for Node until Temporal is unflagged everywhere you care about.
+---
 
-Not urgent until a client (e.g. agent app) imports daymath.
+## API / product (optional)
 
-## API / parity (optional later)
+- Business days, ISO week suite.
+- Scoped twin `@leemr/daymath`.
+- Rich display / i18n — **out of scope** (Temporal+Intl or date-fns TZ formatters).
 
-- Business days: `addBusinessDays`, `differenceInBusinessDays` (weekends first; holidays = config).
-- ISO week suite: `getISOWeek`, `startOfISOWeek`, `getISOWeekYear`, …
-- Rich display format / i18n — **out of scope** for this package (use Temporal + `Intl`, or date-fns/`formatInTimeZone` for zoned display). daymath stays calendar math + ISO day strings.
-- Scoped twin `@leemr/daymath` (thin re-export) if useful for org naming.
-- Optional `sideEffects: false` already set for bundlers.
+Done already: 0.2 surface, expanded ISO years, `isValid(Date)` throws, `isSameDay` alias, date-fns index traps.
 
-## DX (optional later)
+---
 
-- Deeper JSDoc `@example` blocks on hot exports (hover recipes).
-- Benchmarks only if numbers stay honest and small.
+## DX
 
-Done already: `examples/basic.mjs`, types, playground, 100% coverage gate.
+- Deeper `@example` JSDoc on hot exports.
+- Honest micro-bench only if useful.
 
-## Done / settled (do not re-litigate without new data)
+Done already: `examples/basic.mjs`, types, playground, 100% coverage.
 
-- date-fns-shaped names; plain-day values are ISO strings, not `Date`.
-- `getMonth` / `setMonth` 0–11; `getDay` 0 = Sunday; `weekStartsOn` default 0.
-- `isSameDay` alias of `isEqual`.
-- `isValid`: our predicate (valid daymath day). Invalid strings → `false`. `Date` → **throw** (loud swap trap).
-- Expanded ISO years (`±YYYYYY-MM-DD`) accepted; round-trip via Temporal `toString`.
-- Public repo: **fork + PR** for external contributions; no drive-by push to `master`.
+---
+
+## Settled (do not re-litigate without new data)
+
+- date-fns-shaped **names**; values are ISO day **strings**, not `Date`.
+- `getMonth`/`setMonth` 0–11; `getDay` 0=Sunday; `weekStartsOn` default 0.
+- Public: **fork + PR** welcome; no drive-by push to `master`.
+- npm home: https://www.npmjs.com/package/daymath (not GitHub Packages).
