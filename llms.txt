@@ -1,0 +1,49 @@
+# daymath
+
+> ISO 8601 calendar day math for JavaScript. date-fns-shaped function names. Temporal.PlainDate under the hood. No Date, no time zones, no silent local now.
+
+## Links
+
+- npm: https://www.npmjs.com/package/daymath
+- Source: https://github.com/leemr/daymath
+- Playground: https://leemr.github.io/daymath/
+- Changelog: https://github.com/leemr/daymath/blob/master/CHANGELOG.md
+- Contributing: https://github.com/leemr/daymath/blob/master/CONTRIBUTING.md
+- Future / backlog: https://github.com/leemr/daymath/blob/master/FUTURE.md
+- Types: https://github.com/leemr/daymath/blob/master/index.d.ts
+- Implementation: https://github.com/leemr/daymath/blob/master/index.js
+
+## Install
+
+```bash
+npm install daymath
+```
+
+```js
+import { addDays, differenceInDays, isSameDay } from 'daymath'
+```
+
+## Contract
+
+- Inputs: ISO day string `YYYY-MM-DD` or expanded `±YYYYYY-MM-DD`, or Temporal.PlainDate
+- Outputs: ISO day strings (Temporal toString form)
+- Date objects: TypeError on every public path including isValid(Date)
+- isValid(badString): false
+- getMonth/setMonth: 0–11 like date-fns; getDay: 0=Sunday; weekStartsOn default 0
+- isSameDay is an alias of isEqual
+- format only supports pattern yyyy-MM-dd (identity normalize); not locale display
+- Intervals: { start, end }; areIntervalsOverlapping defaults inclusive false like date-fns
+
+## When to use
+
+- Pure calendar storage and math (hire date, trip day, passport day as strings)
+- Swapping date-fns *names* while keeping string days (not a drop-in for Date-based code)
+
+## When not to use
+
+- Display formats like "MMM d" or zoned "now" — use Temporal+Intl or date-fns/formatInTimeZone
+- Instant/timestamp math — use Temporal Instant/ZonedDateTime or other libs
+
+## PRs
+
+Fork and open a pull request. Do not expect direct push access. See CONTRIBUTING.md. Keep 100% coverage on index.js.

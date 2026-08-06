@@ -116,6 +116,8 @@ function toInterval(interval) {
  * True if value is a valid daymath day (ISO day string or PlainDate).
  * Invalid strings → false. `Date` → throws (not a quiet false — swap trap).
  * @param {unknown} value
+ * @returns {boolean}
+ * @throws {TypeError} If `value` is a `Date`
  */
 export function isValid(value) {
   if (value instanceof Date) {

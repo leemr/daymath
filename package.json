@@ -28,7 +28,9 @@
     "plain-date",
     "temporal",
     "date-fns",
-    "YYYY-MM-DD"
+    "YYYY-MM-DD",
+    "ISO-8601",
+    "PlainDate"
   ],
   "author": "leemr",
   "license": "MIT",
@@ -39,7 +41,8 @@
   "bugs": {
     "url": "https://github.com/leemr/daymath/issues"
   },
-  "homepage": "https://github.com/leemr/daymath#readme",
+  "homepage": "https://leemr.github.io/daymath/",
+  "sideEffects": false,
   "dependencies": {
     "temporal-polyfill": "^1.0.3"
   },

@@ -1,6 +1,7 @@
 # daymath
 
 [![npm](https://img.shields.io/npm/v/daymath.svg)](https://www.npmjs.com/package/daymath)
+[![ci](https://github.com/leemr/daymath/actions/workflows/ci.yml/badge.svg)](https://github.com/leemr/daymath/actions/workflows/ci.yml)
 [![license](https://img.shields.io/npm/l/daymath.svg)](./LICENSE)
 [![node](https://img.shields.io/node/v/daymath.svg)](https://www.npmjs.com/package/daymath)
 
@@ -8,7 +9,7 @@
 
 No `Date`. No time zones. No silent “local now.”
 
-[**Play in the browser →**](https://leemr.github.io/daymath/) · [npm](https://www.npmjs.com/package/daymath) · [FUTURE.md](./FUTURE.md)
+[**Play →**](https://leemr.github.io/daymath/) · [npm](https://www.npmjs.com/package/daymath) · [Changelog](./CHANGELOG.md) · [Contributing](./CONTRIBUTING.md) · [FUTURE](./FUTURE.md)
 
 ```bash
 npm install daymath
@@ -21,6 +22,10 @@ addDays('2026-08-06', 1)      // '2026-08-07'
 addMonths('2026-01-31', 1)    // '2026-02-28'
 differenceInDays('2026-08-06', '2026-08-01') // 5
 isSameDay('2026-08-06', '2026-08-06')        // true
+```
+
+```bash
+node examples/basic.mjs   # from a clone
 ```
 
 ## Why
@@ -72,12 +77,14 @@ Uses global `Temporal` when present; otherwise [`temporal-polyfill`](https://www
 
 ## Types & tests
 
-Plain JS + `index.d.ts` (no compile step).
+Plain JS + `index.d.ts` (no compile step). CI runs on Node 18, 20, and 22.
 
 ```bash
 npm test
-npm run test:coverage   # 100% lines on index.js
+npm run test:coverage   # 100% on index.js
 ```
+
+PRs welcome via fork — see [CONTRIBUTING.md](./CONTRIBUTING.md). Security reports: [SECURITY.md](./SECURITY.md).
 
 ## License
 
