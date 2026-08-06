@@ -16,6 +16,16 @@ No `Date`. No time zones. No silent “local now.”
 npm install daymath
 ```
 
+Same code also publishes to **GitHub Packages** as `@leemr/daymath` (scoped; see [GitHub npm registry docs](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-npm-registry)):
+
+```bash
+# one-time: map the scope (auth with a PAT that has read:packages, or GITHUB_TOKEN in Actions)
+echo '@leemr:registry=https://npm.pkg.github.com' >> .npmrc
+npm install @leemr/daymath
+```
+
+Most people should keep using **`daymath` on npmjs**.
+
 ```js
 import { addDays, addMonths, differenceInDays, isSameDay } from 'daymath'
 
