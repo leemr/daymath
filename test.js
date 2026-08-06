@@ -404,3 +404,64 @@ describe('intervals', () => {
     )
   })
 })
+
+describe('range edges', () => {
+  const MIN = '-271821-04-19' // first representable PlainDate
+  const MAX = '+275760-09-13' // last representable PlainDate
+
+  // Every call below asks for a day that cannot exist. Throwing is correct; the
+  // point of the test is that the message stays ours and names the function the
+  // caller actually called, never an internal helper it delegated to.
+  const cases = [
+    ['addDays', () => addDays(MAX, 1)],
+    ['subDays', () => subDays(MIN, 1)],
+    ['addWeeks', () => addWeeks(MAX, 1)],
+    ['subWeeks', () => subWeeks(MIN, 1)],
+    ['addMonths', () => addMonths(MAX, 1)],
+    ['subMonths', () => subMonths(MIN, 1)],
+    ['addQuarters', () => addQuarters(MAX, 1)],
+    ['subQuarters', () => subQuarters(MIN, 1)],
+    ['addYears', () => addYears(MAX, 1)],
+    ['subYears', () => subYears(MIN, 1)],
+    ['setYear', () => setYear(MIN, -271822)],
+    ['setMonth', () => setMonth(MIN, 0)],
+    ['setDate', () => setDate(MIN, 1)],
+    ['startOfWeek', () => startOfWeek(MIN)],
+    ['endOfWeek', () => endOfWeek(MIN)],
+    ['startOfMonth', () => startOfMonth(MIN)],
+    ['endOfMonth', () => endOfMonth(MAX)],
+    ['startOfQuarter', () => startOfQuarter(MIN)],
+    ['endOfQuarter', () => endOfQuarter(MAX)],
+    ['startOfYear', () => startOfYear(MIN)],
+    ['endOfYear', () => endOfYear(MAX)],
+    ['isSameWeek', () => isSameWeek(MIN, MIN)],
+    ['eachMonthOfInterval', () => eachMonthOfInterval({ start: MIN, end: '-271821-05-01' })],
+    ['eachYearOfInterval', () => eachYearOfInterval({ start: MIN, end: '-271820-01-01' })],
+  ]
+
+  for (const [name, call] of cases) {
+    it(`${name} throws with its own daymath: label`, () => {
+      assert.throws(call, (err) => {
+        assert.ok(err instanceof RangeError)
+        assert.equal(
+          err.message.startsWith(`daymath: ${name} could not produce a valid date`),
+          true,
+          `${name} reported: ${err.message}`,
+        )
+        assert.ok(err.cause instanceof Error) // original Temporal error kept
+        return true
+      })
+    })
+  }
+
+  it('works right up to the edge it refuses to cross', () => {
+    assert.equal(addDays(MAX, 0), MAX)
+    assert.equal(subDays(MAX, 1), '+275760-09-12')
+    assert.equal(addDays(MIN, 1), '-271821-04-20')
+    assert.equal(startOfMonth(MAX), '+275760-09-01')
+    assert.equal(endOfMonth(MIN), '-271821-04-30')
+    assert.deepEqual(eachYearOfInterval({ start: '+275760-01-01', end: MAX }), [
+      '+275760-01-01',
+    ])
+  })
+})
