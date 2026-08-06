@@ -134,6 +134,15 @@ describe('add / sub', () => {
     assert.equal(subWeeks(d, 1), '2026-07-30')
   })
 
+  it('day arithmetic wraps months and years (unlike setDate, which constrains)', () => {
+    assert.equal(addDays('2026-08-15', 31), '2026-09-15')
+    assert.equal(addDays('2026-08-15', 17), '2026-09-01')
+    assert.equal(addDays('2026-12-20', 31), '2027-01-20')
+    assert.equal(addDays('2026-02-15', 365), '2027-02-15')
+    assert.equal(subDays('2026-01-01', 1), '2025-12-31')
+    assert.equal(setDate('2026-08-15', 31), '2026-08-31') // stays in August
+  })
+
   it('months constrain end-of-month', () => {
     assert.equal(addMonths('2026-01-31', 1), '2026-02-28')
     assert.equal(addMonths('2024-01-31', 1), '2024-02-29')
@@ -161,7 +170,7 @@ describe('add / sub', () => {
     ]) {
       assert.throws(() => fn(d, 1e9), (err) => {
         assert.ok(err instanceof RangeError)
-        assert.match(err.message, new RegExp(`^daymath: ${name} is outside`)) // err.message has no class prefix
+        assert.match(err.message, new RegExp(`^daymath: ${name} could not produce`)) // err.message has no class prefix
 
         assert.ok(err.cause instanceof Error) // original Temporal error kept
         return true
@@ -199,8 +208,8 @@ describe('getters / setters', () => {
   })
 
   it('setYear / setDate out of range throw with the daymath: prefix', () => {
-    assert.throws(() => setYear(d, 999999), /daymath: setYear is outside/)
-    assert.throws(() => setDate(d, 0), /daymath: setDate is outside/)
+    assert.throws(() => setYear(d, 999999), /daymath: setYear could not produce/)
+    assert.throws(() => setDate(d, 0), /daymath: setDate could not produce/)
   })
 
   it('setDate constrains past the month end (no date-fns roll-over)', () => {

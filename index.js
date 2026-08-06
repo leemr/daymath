@@ -86,7 +86,8 @@ function assertFiniteNumber(n, label) {
 /**
  * Run a Temporal op and keep the `daymath:` message contract when it fails.
  * Temporal throws bare `Out-of-bounds date` / `Non-positive day`; we prefix and
- * keep the original text plus `cause`.
+ * keep the original text plus `cause`. Covers both a result past the range and
+ * an argument Temporal refuses outright, hence the neutral wording.
  * @template T
  * @param {string} label
  * @param {() => T} op
@@ -97,7 +98,7 @@ function guardRange(label, op) {
     return op()
   } catch (err) {
     throw new RangeError(
-      `daymath: ${label} is outside the supported date range (${/** @type {Error} */ (err).message})`,
+      `daymath: ${label} could not produce a valid date (${/** @type {Error} */ (err).message})`,
       { cause: err },
     )
   }
