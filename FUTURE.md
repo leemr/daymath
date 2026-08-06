@@ -6,9 +6,9 @@ Checked-in backlog. Not a promise of order. Session handoff stays in local `todo
 
 - **npm provenance** — publish from GitHub Actions with OIDC (`npm publish --provenance`) so the registry links the tarball to a CI run (not a laptop token).
 - **OpenSSF Scorecard** badge once the repo has enough workflow history to score usefully.
-- **Branch protection** on `master` (require CI green + PR) — optional; PRs already work without it.
+- **`enforce_admins: true`** on branch protection if you want even your own merge/push to wait on CI (today: required checks for merges, admins can still bypass in a pinch).
 
-Done already: `SECURITY.md`, Dependabot, CI on Node 18/20/22, `CHANGELOG.md`, GitHub Releases.
+Done already: `SECURITY.md`, Dependabot, CI on Node 18/20/22, `CHANGELOG.md`, GitHub Releases, **master protected** (no force-push/delete; require status checks Node 18/20/22, strict; PR reviews not required; external fork PRs still open).
 
 ## Discoverability (later)
 
