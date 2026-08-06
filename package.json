@@ -1,22 +1,32 @@
 {
   "name": "daymath",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Calendar date math (YYYY-MM-DD / PlainDate). date-fns-shaped. No time zones.",
   "type": "module",
   "main": "./index.js",
+  "types": "./index.d.ts",
   "exports": {
-    ".": "./index.js"
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    }
   },
   "files": [
     "index.js",
+    "index.d.ts",
     "README.md"
   ],
+  "scripts": {
+    "test": "node --test test.js",
+    "prepublishOnly": "npm test"
+  },
   "keywords": [
     "date",
     "calendar",
     "plain-date",
     "temporal",
-    "date-fns"
+    "date-fns",
+    "YYYY-MM-DD"
   ],
   "author": "leemr",
   "license": "MIT",
@@ -27,5 +37,11 @@
   "bugs": {
     "url": "https://github.com/leemr/daymath/issues"
   },
-  "homepage": "https://github.com/leemr/daymath#readme"
+  "homepage": "https://github.com/leemr/daymath#readme",
+  "dependencies": {
+    "temporal-polyfill": "^1.0.3"
+  },
+  "engines": {
+    "node": ">=18"
+  }
 }
