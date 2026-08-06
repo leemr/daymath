@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.3] — 2026-08-06
+
+### Added
+
+- Hard **100%** coverage gate via **c8** (lines / functions / branches); `coverage/lcov.info` for Codecov
+- Codecov upload in CI (Node 24) + README badge
+- CI matrix **Node 18 / 20 / 22 / 24 / 26**; Actions `checkout` / `setup-node` **v7**
+- GitHub Packages: **`@leemr/daymath`** (`scripts/publish-github-packages.mjs`, `publish-github-packages` workflow)
+- OSS baseline: `CONTRIBUTING.md`, `SECURITY.md`, `llms.txt`, `examples/basic.mjs`
+- Open Graph card `docs/og.png` for Pages unfurls
+- Master branch protection (required Node checks; no force-push/delete)
+
+### Changed
+
+- `package.json` `homepage` → Pages; `sideEffects: false`; richer keywords
+
 ## [0.2.2] — 2026-08-06
 
 ### Added
@@ -52,7 +68,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Package name reserved on npm; stub `addDays` throws “not implemented”
 
-[Unreleased]: https://github.com/leemr/daymath/compare/v0.2.2...HEAD
+[Unreleased]: https://github.com/leemr/daymath/compare/v0.2.3...HEAD
+[0.2.3]: https://github.com/leemr/daymath/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/leemr/daymath/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/leemr/daymath/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/leemr/daymath/compare/v0.1.0...v0.2.0
