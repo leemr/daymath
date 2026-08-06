@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>daymath — play</title>
+    <meta
+      name="description"
+      content="Try daymath: ISO 8601 calendar date math, date-fns-shaped names."
+    />
+    <style>
+      :root {
+        color-scheme: dark light;
+        --bg: #0f1419;
+        --panel: #1a2332;
+        --text: #e7ecf3;
+        --muted: #8b9bb4;
+        --accent: #5b9fd4;
+        --ok: #3dcf8e;
+        --err: #f07178;
+        --border: #2a3548;
+        --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        --sans: system-ui, -apple-system, Segoe UI, sans-serif;
+      }
+      @media (prefers-color-scheme: light) {
+        :root {
+          --bg: #f4f6f9;
+          --panel: #fff;
+          --text: #1a2332;
+          --muted: #5a6a82;
+          --accent: #1a6fb5;
+          --ok: #0a7a4b;
+          --err: #c0392b;
+          --border: #d5dde8;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: var(--sans);
+        background: var(--bg);
+        color: var(--text);
+        line-height: 1.45;
+      }
+      main {
+        max-width: 40rem;
+        margin: 0 auto;
+        padding: 2rem 1.25rem 4rem;
+      }
+      h1 {
+        font-size: 1.75rem;
+        margin: 0 0 0.35rem;
+        letter-spacing: -0.02em;
+      }
+      .tag {
+        color: var(--muted);
+        font-size: 0.95rem;
+        margin: 0 0 1.5rem;
+      }
+      a {
+        color: var(--accent);
+      }
+      .links {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem 1.25rem;
+        margin-bottom: 1.75rem;
+        font-size: 0.9rem;
+      }
+      label {
+        display: block;
+        font-size: 0.8rem;
+        color: var(--muted);
+        margin-bottom: 0.35rem;
+      }
+      .row {
+        display: grid;
+        gap: 0.75rem;
+        margin-bottom: 1rem;
+      }
+      @media (min-width: 520px) {
+        .row.two {
+          grid-template-columns: 1fr 1fr;
+        }
+      }
+      input,
+      select,
+      button {
+        font: inherit;
+        border-radius: 8px;
+        border: 1px solid var(--border);
+        background: var(--panel);
+        color: var(--text);
+        padding: 0.55rem 0.7rem;
+        width: 100%;
+      }
+      button {
+        cursor: pointer;
+        background: var(--accent);
+        color: #fff;
+        border-color: transparent;
+        font-weight: 600;
+      }
+      button:hover {
+        filter: brightness(1.08);
+      }
+      .presets {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.4rem;
+        margin: 0.5rem 0 1.25rem;
+      }
+      .presets button {
+        width: auto;
+        background: var(--panel);
+        color: var(--text);
+        border: 1px solid var(--border);
+        font-weight: 500;
+        font-size: 0.85rem;
+        padding: 0.35rem 0.6rem;
+      }
+      pre {
+        font-family: var(--mono);
+        font-size: 0.9rem;
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 1rem;
+        overflow-x: auto;
+        white-space: pre-wrap;
+        word-break: break-word;
+        min-height: 4.5rem;
+      }
+      pre.ok {
+        color: var(--ok);
+      }
+      pre.err {
+        color: var(--err);
+      }
+      footer {
+        margin-top: 2rem;
+        font-size: 0.8rem;
+        color: var(--muted);
+      }
+      code {
+        font-family: var(--mono);
+        font-size: 0.88em;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>daymath</h1>
+      <p class="tag">
+        ISO 8601 calendar days · date-fns-shaped names · no <code>Date</code>, no
+        time zones
+      </p>
+      <nav class="links">
+        <a href="https://www.npmjs.com/package/daymath">npm</a>
+        <a href="https://github.com/leemr/daymath">GitHub</a>
+        <a href="https://github.com/leemr/daymath#readme">README</a>
+      </nav>
+
+      <div class="row two">
+        <div>
+          <label for="date">Day (ISO 8601)</label>
+          <input id="date" type="text" value="2026-08-06" spellcheck="false" />
+        </div>
+        <div>
+          <label for="amount">Amount</label>
+          <input id="amount" type="number" value="7" step="1" />
+        </div>
+      </div>
+
+      <div class="row">
+        <div>
+          <label for="op">Function</label>
+          <select id="op">
+            <option value="addDays">addDays</option>
+            <option value="subDays">subDays</option>
+            <option value="addWeeks">addWeeks</option>
+            <option value="addMonths">addMonths</option>
+            <option value="addYears">addYears</option>
+            <option value="startOfMonth">startOfMonth</option>
+            <option value="endOfMonth">endOfMonth</option>
+            <option value="startOfWeek">startOfWeek</option>
+            <option value="endOfWeek">endOfWeek</option>
+            <option value="isWeekend">isWeekend</option>
+            <option value="getDay">getDay</option>
+            <option value="differenceInDays">differenceInDays (vs 2026-01-01)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="presets">
+        <button type="button" data-preset="2026-01-31">month-end</button>
+        <button type="button" data-preset="2024-02-29">leap day</button>
+        <button type="button" data-preset="9999-12-31">year 9999</button>
+        <button type="button" data-preset="+010000-01-01">+010000</button>
+      </div>
+
+      <button type="button" id="run">Run</button>
+      <pre id="out" class="ok">Loading daymath…</pre>
+
+      <footer>
+        Loads <code>daymath</code> from jsDelivr (published npm). Source for this
+        page: <code>docs/index.html</code> on GitHub Pages.
+      </footer>
+    </main>
+
+    <script type="module">
+      import * as daymath from 'https://cdn.jsdelivr.net/npm/daymath/+esm'
+
+      const dateEl = document.getElementById('date')
+      const amountEl = document.getElementById('amount')
+      const opEl = document.getElementById('op')
+      const out = document.getElementById('out')
+
+      function show(ok, text) {
+        out.className = ok ? 'ok' : 'err'
+        out.textContent = text
+      }
+
+      function run() {
+        const date = dateEl.value.trim()
+        const amount = Number(amountEl.value)
+        const op = opEl.value
+        try {
+          let result
+          switch (op) {
+            case 'addDays':
+            case 'subDays':
+            case 'addWeeks':
+            case 'addMonths':
+            case 'addYears':
+              result = daymath[op](date, amount)
+              show(true, `${op}(${JSON.stringify(date)}, ${amount})\n→ ${JSON.stringify(result)}`)
+              break
+            case 'startOfMonth':
+            case 'endOfMonth':
+            case 'startOfWeek':
+            case 'endOfWeek':
+            case 'isWeekend':
+            case 'getDay':
+              result = daymath[op](date)
+              show(true, `${op}(${JSON.stringify(date)})\n→ ${JSON.stringify(result)}`)
+              break
+            case 'differenceInDays':
+              result = daymath.differenceInDays(date, '2026-01-01')
+              show(
+                true,
+                `differenceInDays(${JSON.stringify(date)}, "2026-01-01")\n→ ${result}`,
+              )
+              break
+            default:
+              show(false, 'Unknown op')
+          }
+        } catch (err) {
+          show(false, String(err && err.message ? err.message : err))
+        }
+      }
+
+      document.getElementById('run').addEventListener('click', run)
+      for (const btn of document.querySelectorAll('[data-preset]')) {
+        btn.addEventListener('click', () => {
+          dateEl.value = btn.getAttribute('data-preset')
+          run()
+        })
+      }
+      show(true, `daymath loaded · try Run or a preset`)
+      run()
+    </script>
+  </body>
+</html>

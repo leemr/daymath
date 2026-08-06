@@ -46,9 +46,13 @@ import {
   isSameQuarter,
   isSameWeek,
   isSameYear,
+  isSaturday,
   isSunday,
   isThursday,
+  isTuesday,
   isValid,
+  isWednesday,
+  isFriday,
   isWeekend,
   isWithinInterval,
   max,
@@ -242,14 +246,29 @@ describe('difference / compare', () => {
     assert.equal(compareDesc('2026-08-01', d), 1)
     assert.equal(min(['2026-08-06', '2026-01-01', '2026-12-31']), '2026-01-01')
     assert.equal(max(['2026-08-06', '2026-01-01', '2026-12-31']), '2026-12-31')
+    assert.throws(() => min([]), /non-empty/)
+    assert.throws(() => min(/** @type {any} */ ('nope')), /non-empty/)
+  })
+
+  it('weekStartsOn validation', () => {
+    assert.throws(() => startOfWeek(d, { weekStartsOn: 7 }), /weekStartsOn/)
+    assert.throws(() => startOfWeek(d, { weekStartsOn: -1 }), /weekStartsOn/)
+    assert.throws(
+      () => startOfWeek(d, { weekStartsOn: /** @type {any} */ (1.5) }),
+      /weekStartsOn/,
+    )
   })
 })
 
 describe('weekday predicates', () => {
   it('named days / weekend / month edges', () => {
-    assert.equal(isThursday(d), true)
-    assert.equal(isMonday('2026-08-03'), true)
     assert.equal(isSunday('2026-08-02'), true)
+    assert.equal(isMonday('2026-08-03'), true)
+    assert.equal(isTuesday('2026-08-04'), true)
+    assert.equal(isWednesday('2026-08-05'), true)
+    assert.equal(isThursday(d), true)
+    assert.equal(isFriday('2026-08-07'), true)
+    assert.equal(isSaturday('2026-08-08'), true)
     assert.equal(isWeekend('2026-08-02'), true)
     assert.equal(isWeekend(d), false)
     assert.equal(isFirstDayOfMonth('2026-08-01'), true)
@@ -268,6 +287,8 @@ describe('intervals', () => {
       () => eachDayOfInterval({ start: '2026-08-07', end: '2026-08-05' }),
       /start must not be after end/,
     )
+    assert.throws(() => eachDayOfInterval(/** @type {any} */ (null)), /interval/)
+    assert.throws(() => eachDayOfInterval(/** @type {any} */ ('x')), /interval/)
   })
 
   it('eachMonthOfInterval / eachYearOfInterval', () => {
@@ -279,6 +300,14 @@ describe('intervals', () => {
       eachYearOfInterval({ start: '2024-06-01', end: '2026-02-01' }),
       ['2024-01-01', '2025-01-01', '2026-01-01'],
     )
+    assert.throws(
+      () => eachMonthOfInterval({ start: '2026-03-01', end: '2026-01-01' }),
+      /start must not be after end/,
+    )
+    assert.throws(
+      () => eachYearOfInterval({ start: '2026-01-01', end: '2024-01-01' }),
+      /start must not be after end/,
+    )
   })
 
   it('isWithinInterval / clamp', () => {
@@ -289,6 +318,9 @@ describe('intervals', () => {
     assert.equal(clamp('2026-07-01', iv), '2026-08-01')
     assert.equal(clamp('2026-08-05', iv), '2026-08-05')
     assert.equal(clamp('2026-09-01', iv), '2026-08-10')
+    const bad = { start: '2026-08-10', end: '2026-08-01' }
+    assert.throws(() => isWithinInterval(d, bad), /start must not be after end/)
+    assert.throws(() => clamp(d, bad), /start must not be after end/)
   })
 
   it('areIntervalsOverlapping (date-fns default exclusive endpoints)', () => {
@@ -299,6 +331,22 @@ describe('intervals', () => {
     assert.equal(
       areIntervalsOverlapping(a, { start: '2026-08-05', end: '2026-08-15' }),
       true,
+    )
+    assert.throws(
+      () =>
+        areIntervalsOverlapping(
+          { start: '2026-08-10', end: '2026-08-01' },
+          b,
+        ),
+      /intervalLeft/,
+    )
+    assert.throws(
+      () =>
+        areIntervalsOverlapping(a, {
+          start: '2026-08-20',
+          end: '2026-08-10',
+        }),
+      /intervalRight/,
     )
   })
 })

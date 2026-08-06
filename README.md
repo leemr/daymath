@@ -1,102 +1,83 @@
 # daymath
 
-Calendar date math for **ISO 8601** day strings. **date-fns-shaped** names. **Temporal.PlainDate** under the hood.
+[![npm](https://img.shields.io/npm/v/daymath.svg)](https://www.npmjs.com/package/daymath)
+[![license](https://img.shields.io/npm/l/daymath.svg)](./LICENSE)
+[![node](https://img.shields.io/node/v/daymath.svg)](https://www.npmjs.com/package/daymath)
+
+**ISO 8601** calendar day math. **date-fns-shaped** names. **Temporal.PlainDate** under the hood.
 
 No `Date`. No time zones. No silent “local now.”
+
+[**Play in the browser →**](https://leemr.github.io/daymath/) · [npm](https://www.npmjs.com/package/daymath) · [FUTURE.md](./FUTURE.md)
 
 ```bash
 npm install daymath
 ```
 
-## Why
-
-`Date` is a timestamp. Calendar work (“add one month”, “days between hire and start”) is not. This package only does plain calendar days.
-
-## Usage
-
 ```js
-import {
-  addDays,
-  addMonths,
-  differenceInDays,
-  isBefore,
-  isSameDay,
-  startOfMonth,
-  eachDayOfInterval,
-} from 'daymath'
+import { addDays, addMonths, differenceInDays, isSameDay } from 'daymath'
 
-addDays('2026-08-06', 1)                    // '2026-08-07'
-addMonths('2026-01-31', 1)                  // '2026-02-28' (constrain)
+addDays('2026-08-06', 1)      // '2026-08-07'
+addMonths('2026-01-31', 1)    // '2026-02-28'
 differenceInDays('2026-08-06', '2026-08-01') // 5
-isBefore('2026-08-05', '2026-08-06')         // true
-isSameDay('2026-08-06', '2026-08-06')        // true (alias of isEqual)
-startOfMonth('2026-08-06')                  // '2026-08-01'
-addDays('9999-12-31', 1)                    // '+010000-01-01' (expanded year)
-eachDayOfInterval({
-  start: '2026-08-05',
-  end: '2026-08-07',
-}) // ['2026-08-05', '2026-08-06', '2026-08-07']
+isSameDay('2026-08-06', '2026-08-06')        // true
 ```
 
-**Inputs:** ISO 8601 day string or `Temporal.PlainDate`.  
-- `YYYY-MM-DD` (years 0000–9999)  
-- expanded `±YYYYYY-MM-DD` (e.g. `+010000-01-01`)  
+## Why
 
-**Outputs:** Temporal’s ISO day string (same forms).
+`Date` is a timestamp. Hire dates, passport expiry, trip days are **calendar** values. daymath only does plain days as ISO strings.
 
-`Date` throws (including `isValid(date)`). Bad strings: math helpers throw; `isValid('asdf')` → `false`. Time-bearing / sloppy forms throw.
+| In | Out |
+|----|-----|
+| `YYYY-MM-DD` or expanded `±YYYYYY-MM-DD` | same forms (Temporal `toString`) |
+| or `Temporal.PlainDate` | string |
 
-See [FUTURE.md](./FUTURE.md) for backlog (bundle size, business days, …).
+`Date` **throws** (including `isValid`). `isValid('asdf')` → `false`.
 
-## date-fns parity notes
+## date-fns parity (names, not `Date`)
 
 | Topic | daymath |
 |-------|---------|
-| Value type | ISO day string (not `Date`) |
-| `isSameDay` | Alias of `isEqual` (same calendar day) |
-| `isValid` | Our predicate: valid day string / PlainDate. `Date` **throws** (not date-fns’s Date check) |
-| `getMonth` / `setMonth` | **0–11** like Date/date-fns (0 = January) |
-| `getDay` | **0–6** like Date/date-fns (0 = Sunday) |
-| `weekStartsOn` | `0` = Sunday … `6` = Saturday (default `0`) |
-| Intervals | `{ start, end }` inclusive for `each*` / `isWithin` / `clamp` |
-| `areIntervalsOverlapping` | Default `{ inclusive: false }` (date-fns); pass `true` for closed |
+| Values | ISO day **strings**, not `Date` |
+| `isSameDay` | Alias of `isEqual` |
+| `isValid` | Valid daymath day; **`Date` throws** |
+| `getMonth` / `setMonth` | **0–11** (0 = January) |
+| `getDay` | **0–6** (0 = Sunday) |
+| `weekStartsOn` | default `0` (Sunday) |
+| Intervals | `{ start, end }` |
 
-## API (0.2)
+## API
 
-### Parse / format
-`parse` · `format` · `isValid`
+**Parse** — `parse` · `format` · `isValid`  
 
-### Add / sub
-`addDays` / `subDays` · `addWeeks` / `subWeeks` · `addMonths` / `subMonths` · `addYears` / `subYears` · `addQuarters` / `subQuarters`
+**Add/sub** — Days · Weeks · Months · Years · Quarters  
 
-### Get / set
-`getYear` · `getMonth` · `getDate` · `getDay` · `getDayOfYear` · `getDaysInMonth` · `getQuarter` · `isLeapYear`  
-`setYear` · `setMonth` · `setDate`
+**Get/set** — `getYear` · `getMonth` · `getDate` · `getDay` · `getDayOfYear` · `getDaysInMonth` · `getQuarter` · `isLeapYear` · `setYear` · `setMonth` · `setDate`  
 
-### Start / end
-`startOfMonth` / `endOfMonth` · `startOfYear` / `endOfYear` · `startOfQuarter` / `endOfQuarter` · `startOfWeek` / `endOfWeek`
+**Bounds** — `startOf`/`endOf` Month · Year · Quarter · Week  
 
-### Differences
-`differenceInDays` · `differenceInWeeks` · `differenceInMonths` · `differenceInCalendarMonths` · `differenceInYears` · `differenceInCalendarYears` · `differenceInQuarters` · `differenceInCalendarQuarters`
+**Diffs** — Days · Weeks · Months · CalendarMonths · Years · CalendarYears · Quarters · CalendarQuarters  
 
-### Compare
-`isBefore` · `isAfter` · `isEqual` · `isSameDay` · `isSameWeek` · `isSameMonth` · `isSameYear` · `isSameQuarter` · `compareAsc` · `compareDesc` · `min` · `max`
+**Compare** — `isBefore` · `isAfter` · `isEqual` · `isSameDay` · `isSameWeek` · Month · Year · Quarter · `compareAsc` · `compareDesc` · `min` · `max`  
 
-### Weekday / month edges
-`isSunday`…`isSaturday` · `isWeekend` · `isFirstDayOfMonth` · `isLastDayOfMonth`
+**Weekday** — `isSunday`…`isSaturday` · `isWeekend` · first/last day of month  
 
-### Intervals
-`eachDayOfInterval` · `eachMonthOfInterval` · `eachYearOfInterval` · `isWithinInterval` · `clamp` · `areIntervalsOverlapping`
+**Intervals** — `eachDayOfInterval` · `eachMonthOfInterval` · `eachYearOfInterval` · `isWithinInterval` · `clamp` · `areIntervalsOverlapping`
 
-Amounts must be finite integers.
+Amounts are finite integers.
 
 ## Temporal
 
 Uses global `Temporal` when present; otherwise [`temporal-polyfill`](https://www.npmjs.com/package/temporal-polyfill).
 
-## Types
+## Types & tests
 
-Ships `index.d.ts` (no TypeScript compile step). Source is plain JS.
+Plain JS + `index.d.ts` (no compile step).
+
+```bash
+npm test
+npm run test:coverage   # 100% lines on index.js
+```
 
 ## License
 

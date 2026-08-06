@@ -1,6 +1,6 @@
 {
   "name": "daymath",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Calendar date math (ISO 8601 day / PlainDate). date-fns-shaped. No time zones.",
   "type": "module",
   "main": "./index.js",
@@ -18,8 +18,10 @@
   ],
   "scripts": {
     "test": "node --test test.js",
-    "prepublishOnly": "npm test"
+    "test:coverage": "node --test --experimental-test-coverage --test-coverage-include=index.js test.js",
+    "prepublishOnly": "npm run test:coverage"
   },
+
   "keywords": [
     "date",
     "calendar",
