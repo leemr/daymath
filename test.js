@@ -104,6 +104,13 @@ describe('parse / format / isValid', () => {
     assert.equal(isValid('+010000-01-01'), true)
   })
 
+  it('accepts the documented range and rejects either side of it', () => {
+    assert.equal(parse('-271821-04-19'), '-271821-04-19') // min PlainDate
+    assert.equal(parse('+275760-09-13'), '+275760-09-13') // max PlainDate
+    assert.throws(() => parse('+275760-09-14'), /invalid date/)
+    assert.throws(() => parse('-271821-04-18'), /invalid date/)
+  })
+
   it('formats only yyyy-MM-dd pattern name', () => {
     assert.equal(format(d), d)
     assert.equal(format('+010000-01-01'), '+010000-01-01')
@@ -145,6 +152,22 @@ describe('add / sub', () => {
     assert.throws(() => addDays(d, 1.5), /integer/)
     assert.throws(() => addDays(d, NaN), /finite/)
   })
+
+  it('range overflow keeps the daymath: prefix', () => {
+    for (const [fn, name] of [
+      [addDays, 'addDays'],
+      [addMonths, 'addMonths'],
+      [addYears, 'addYears'],
+    ]) {
+      assert.throws(() => fn(d, 1e9), (err) => {
+        assert.ok(err instanceof RangeError)
+        assert.match(err.message, new RegExp(`^daymath: ${name} is outside`)) // err.message has no class prefix
+
+        assert.ok(err.cause instanceof Error) // original Temporal error kept
+        return true
+      })
+    }
+  })
 })
 
 describe('getters / setters', () => {
@@ -173,6 +196,16 @@ describe('getters / setters', () => {
     assert.equal(setDate(d, 1), '2026-08-01')
     assert.equal(setMonth('2026-01-31', 1), '2026-02-28') // constrain
     assert.throws(() => setMonth(d, 12), /0…11/)
+  })
+
+  it('setYear / setDate out of range throw with the daymath: prefix', () => {
+    assert.throws(() => setYear(d, 999999), /daymath: setYear is outside/)
+    assert.throws(() => setDate(d, 0), /daymath: setDate is outside/)
+  })
+
+  it('setDate constrains past the month end (no date-fns roll-over)', () => {
+    assert.equal(setDate('2026-02-01', 31), '2026-02-28')
+    assert.equal(setDate(d, 99), '2026-08-31')
   })
 })
 
@@ -244,6 +277,7 @@ describe('difference / compare', () => {
     assert.equal(compareAsc('2026-08-01', d), -1)
     assert.equal(compareAsc(d, d), 0)
     assert.equal(compareDesc('2026-08-01', d), 1)
+    assert.ok(Object.is(compareDesc(d, d), 0)) // 0, not -0
     assert.equal(min(['2026-08-06', '2026-01-01', '2026-12-31']), '2026-01-01')
     assert.equal(max(['2026-08-06', '2026-01-01', '2026-12-31']), '2026-12-31')
     assert.throws(() => min([]), /non-empty/)
@@ -307,6 +341,17 @@ describe('intervals', () => {
     assert.throws(
       () => eachYearOfInterval({ start: '2026-01-01', end: '2024-01-01' }),
       /start must not be after end/,
+    )
+  })
+
+  it('walkers stop at the last max-PlainDate step instead of overflowing', () => {
+    assert.deepEqual(
+      eachDayOfInterval({ start: '+275760-09-12', end: '+275760-09-13' }),
+      ['+275760-09-12', '+275760-09-13'],
+    )
+    assert.deepEqual(
+      eachMonthOfInterval({ start: '+275760-09-01', end: '+275760-09-13' }),
+      ['+275760-09-01'],
     )
   })
 

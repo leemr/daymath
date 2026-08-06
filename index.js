@@ -7,6 +7,11 @@ const Temporal = globalThis.Temporal ?? TemporalPolyfill
  * ISO 8601 calendar day string:
  * - `YYYY-MM-DD` (years 0000–9999)
  * - expanded `±YYYYYY-MM-DD` (Temporal form, e.g. `+010000-01-01`)
+ *
+ * The shape passes this regex; the value must also fall inside the Temporal
+ * `PlainDate` range `-271821-04-19` … `+275760-09-13` (roughly ±10^8 days from
+ * the epoch). Outside it, Temporal throws and we re-throw with the `daymath:`
+ * prefix.
  */
 const ISO_DAY =
   /^(?:[+-]\d{6}|\d{4})-\d{2}-\d{2}$/
@@ -75,6 +80,26 @@ function assertFiniteNumber(n, label) {
   }
   if (!Number.isInteger(n)) {
     throw new RangeError(`daymath: ${label} must be an integer`)
+  }
+}
+
+/**
+ * Run a Temporal op and keep the `daymath:` message contract when it fails.
+ * Temporal throws bare `Out-of-bounds date` / `Non-positive day`; we prefix and
+ * keep the original text plus `cause`.
+ * @template T
+ * @param {string} label
+ * @param {() => T} op
+ * @returns {T}
+ */
+function guardRange(label, op) {
+  try {
+    return op()
+  } catch (err) {
+    throw new RangeError(
+      `daymath: ${label} is outside the supported date range (${/** @type {Error} */ (err).message})`,
+      { cause: err },
+    )
   }
 }
 
@@ -166,7 +191,8 @@ export function format(date, pattern = 'yyyy-MM-dd') {
  */
 export function addDays(date, amount) {
   assertFiniteNumber(amount, 'amount')
-  return toDayString(toPlainDate(date).add({ days: amount }))
+  const d = toPlainDate(date)
+  return guardRange('addDays', () => toDayString(d.add({ days: amount })))
 }
 
 /**
@@ -207,7 +233,8 @@ export function subWeeks(date, amount) {
  */
 export function addMonths(date, amount) {
   assertFiniteNumber(amount, 'amount')
-  return toDayString(toPlainDate(date).add({ months: amount }))
+  const d = toPlainDate(date)
+  return guardRange('addMonths', () => toDayString(d.add({ months: amount })))
 }
 
 /**
@@ -227,7 +254,8 @@ export function subMonths(date, amount) {
  */
 export function addYears(date, amount) {
   assertFiniteNumber(amount, 'amount')
-  return toDayString(toPlainDate(date).add({ years: amount }))
+  const d = toPlainDate(date)
+  return guardRange('addYears', () => toDayString(d.add({ years: amount })))
 }
 
 /**
@@ -317,7 +345,8 @@ export function isLeapYear(date) {
  */
 export function setYear(date, year) {
   assertFiniteNumber(year, 'year')
-  return toDayString(toPlainDate(date).with({ year }))
+  const d = toPlainDate(date)
+  return guardRange('setYear', () => toDayString(d.with({ year })))
 }
 
 /**
@@ -335,12 +364,14 @@ export function setMonth(date, month) {
 
 /**
  * @param {DayInput} date
- * @param {number} dayOfMonth
+ * @param {number} dayOfMonth 1…31; a day past the month end constrains to the
+ * last day of that month (no roll-over into the next month, unlike date-fns)
  * @returns {string}
  */
 export function setDate(date, dayOfMonth) {
   assertFiniteNumber(dayOfMonth, 'day')
-  return toDayString(toPlainDate(date).with({ day: dayOfMonth }))
+  const d = toPlainDate(date)
+  return guardRange('setDate', () => toDayString(d.with({ day: dayOfMonth })))
 }
 
 // ─── start / end of unit ───────────────────────────────────────────
@@ -610,7 +641,8 @@ export function compareAsc(dateLeft, dateRight) {
  * @returns {-1 | 0 | 1}
  */
 export function compareDesc(dateLeft, dateRight) {
-  return /** @type {-1 | 0 | 1} */ (-compareAsc(dateLeft, dateRight))
+  // `|| 0` normalises -0 for equal days
+  return /** @type {-1 | 0 | 1} */ (-compareAsc(dateLeft, dateRight) || 0)
 }
 
 /**
@@ -701,8 +733,11 @@ export function eachDayOfInterval(interval) {
   /** @type {string[]} */
   const out = []
   let cur = start
-  while (Temporal.PlainDate.compare(cur, end) <= 0) {
+  // break on the last day, never step past it — an add beyond the max
+  // PlainDate (+275760-09-13) throws
+  for (;;) {
     out.push(toDayString(cur))
+    if (Temporal.PlainDate.compare(cur, end) >= 0) break
     cur = cur.add({ days: 1 })
   }
   return out
@@ -722,8 +757,10 @@ export function eachMonthOfInterval(interval) {
   const out = []
   let cur = start.with({ day: 1 })
   const last = end.with({ day: 1 })
-  while (Temporal.PlainDate.compare(cur, last) <= 0) {
+  // same boundary rule as eachDayOfInterval
+  for (;;) {
     out.push(toDayString(cur))
+    if (Temporal.PlainDate.compare(cur, last) >= 0) break
     cur = cur.add({ months: 1 })
   }
   return out
@@ -788,7 +825,7 @@ export function clamp(date, interval) {
  * Whether two inclusive intervals overlap.
  * @param {Interval} intervalLeft
  * @param {Interval} intervalRight
- * @param {{ inclusive?: boolean }} [options] default inclusive true (date-fns default false uses half-open; we default true for plain days)
+ * @param {{ inclusive?: boolean }} [options] `inclusive` defaults to false, like date-fns: intervals that only touch at an endpoint do not overlap
  * @returns {boolean}
  */
 export function areIntervalsOverlapping(intervalLeft, intervalRight, options) {
