@@ -1,7 +1,7 @@
 {
   "name": "daymath",
-  "version": "0.2.0",
-  "description": "Calendar date math (YYYY-MM-DD / PlainDate). date-fns-shaped. No time zones.",
+  "version": "0.2.1",
+  "description": "Calendar date math (ISO 8601 day / PlainDate). date-fns-shaped. No time zones.",
   "type": "module",
   "main": "./index.js",
   "types": "./index.d.ts",

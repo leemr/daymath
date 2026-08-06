@@ -1,6 +1,6 @@
 # daymath
 
-Calendar date math for **ISO 8601** `YYYY-MM-DD` strings. **date-fns-shaped** names. **Temporal.PlainDate** under the hood.
+Calendar date math for **ISO 8601** day strings. **date-fns-shaped** names. **Temporal.PlainDate** under the hood.
 
 No `Date`. No time zones. No silent “local now.”
 
@@ -31,23 +31,30 @@ differenceInDays('2026-08-06', '2026-08-01') // 5
 isBefore('2026-08-05', '2026-08-06')         // true
 isSameDay('2026-08-06', '2026-08-06')        // true (alias of isEqual)
 startOfMonth('2026-08-06')                  // '2026-08-01'
+addDays('9999-12-31', 1)                    // '+010000-01-01' (expanded year)
 eachDayOfInterval({
   start: '2026-08-05',
   end: '2026-08-07',
 }) // ['2026-08-05', '2026-08-06', '2026-08-07']
 ```
 
-**Inputs:** ISO 8601 `YYYY-MM-DD` or `Temporal.PlainDate`.  
-**Outputs:** always `YYYY-MM-DD` string (for math helpers).
+**Inputs:** ISO 8601 day string or `Temporal.PlainDate`.  
+- `YYYY-MM-DD` (years 0000–9999)  
+- expanded `±YYYYYY-MM-DD` (e.g. `+010000-01-01`)  
 
-`Date` throws. Time-bearing strings throw. Sloppy forms like `2026-8-6` throw.
+**Outputs:** Temporal’s ISO day string (same forms).
+
+`Date` throws (including `isValid(date)`). Bad strings: math helpers throw; `isValid('asdf')` → `false`. Time-bearing / sloppy forms throw.
+
+See [FUTURE.md](./FUTURE.md) for backlog (bundle size, business days, …).
 
 ## date-fns parity notes
 
 | Topic | daymath |
 |-------|---------|
-| Value type | `YYYY-MM-DD` string (not `Date`) |
+| Value type | ISO day string (not `Date`) |
 | `isSameDay` | Alias of `isEqual` (same calendar day) |
+| `isValid` | Our predicate: valid day string / PlainDate. `Date` **throws** (not date-fns’s Date check) |
 | `getMonth` / `setMonth` | **0–11** like Date/date-fns (0 = January) |
 | `getDay` | **0–6** like Date/date-fns (0 = Sunday) |
 | `weekStartsOn` | `0` = Sunday … `6` = Saturday (default `0`) |

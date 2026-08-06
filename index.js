@@ -1,7 +1,15 @@
-/** daymath — calendar date math (YYYY-MM-DD). date-fns-shaped. No Date / time zones. */
+/** daymath — calendar date math (ISO 8601 day). date-fns-shaped. No Date / time zones. */
 import { Temporal as TemporalPolyfill } from 'temporal-polyfill'
 
 const Temporal = globalThis.Temporal ?? TemporalPolyfill
+
+/**
+ * ISO 8601 calendar day string:
+ * - `YYYY-MM-DD` (years 0000–9999)
+ * - expanded `±YYYYYY-MM-DD` (Temporal form, e.g. `+010000-01-01`)
+ */
+const ISO_DAY =
+  /^(?:[+-]\d{6}|\d{4})-\d{2}-\d{2}$/
 
 /** @typedef {string | Temporal.PlainDate} DayInput */
 /**
@@ -17,7 +25,7 @@ const Temporal = globalThis.Temporal ?? TemporalPolyfill
 // ─── core conversion ───────────────────────────────────────────────
 
 /**
- * Reject Date and non-calendar values. Accept YYYY-MM-DD string or PlainDate.
+ * Reject Date and non-calendar values. Accept ISO day string or PlainDate.
  * @param {unknown} value
  * @param {string} label
  * @returns {Temporal.PlainDate}
@@ -25,14 +33,13 @@ const Temporal = globalThis.Temporal ?? TemporalPolyfill
 function toPlainDate(value, label = 'date') {
   if (value instanceof Date) {
     throw new TypeError(
-      `daymath: Date is not allowed for ${label} (pass YYYY-MM-DD string)`,
+      `daymath: Date is not allowed for ${label} (pass ISO 8601 day string)`,
     )
   }
   if (typeof value === 'string') {
-    // Strict ISO 8601 calendar date: YYYY-MM-DD only.
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    if (!ISO_DAY.test(value)) {
       throw new RangeError(
-        `daymath: ${label} must be YYYY-MM-DD (got ${JSON.stringify(value)})`,
+        `daymath: ${label} must be ISO 8601 day YYYY-MM-DD or ±YYYYYY-MM-DD (got ${JSON.stringify(value)})`,
       )
     }
     try {
@@ -47,7 +54,7 @@ function toPlainDate(value, label = 'date') {
     return value
   }
   throw new TypeError(
-    `daymath: ${label} must be YYYY-MM-DD string or Temporal.PlainDate`,
+    `daymath: ${label} must be ISO 8601 day string or Temporal.PlainDate`,
   )
 }
 
@@ -105,8 +112,17 @@ function toInterval(interval) {
 
 // ─── parse / format / valid ────────────────────────────────────────
 
-/** @param {unknown} value */
+/**
+ * True if value is a valid daymath day (ISO day string or PlainDate).
+ * Invalid strings → false. `Date` → throws (not a quiet false — swap trap).
+ * @param {unknown} value
+ */
 export function isValid(value) {
+  if (value instanceof Date) {
+    throw new TypeError(
+      'daymath: Date is not allowed for isValid (pass ISO 8601 day string)',
+    )
+  }
   try {
     toPlainDate(value)
     return true
@@ -116,7 +132,7 @@ export function isValid(value) {
 }
 
 /**
- * Validate / normalize a calendar day string (ISO 8601 YYYY-MM-DD).
+ * Validate / normalize an ISO 8601 calendar day string.
  * @param {DayInput} date
  * @returns {string}
  */

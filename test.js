@@ -84,24 +84,34 @@ describe('parse / format / isValid', () => {
   })
 
   it('rejects time / sloppy strings', () => {
-    assert.throws(() => parse('2026-08-06T12:00:00'), /YYYY-MM-DD/)
-    assert.throws(() => parse('2026-8-6'), /YYYY-MM-DD/)
-    assert.throws(() => parse('08/06/2026'), /YYYY-MM-DD/)
+    assert.throws(() => parse('2026-08-06T12:00:00'), /ISO 8601/)
+    assert.throws(() => parse('2026-8-6'), /ISO 8601/)
+    assert.throws(() => parse('08/06/2026'), /ISO 8601/)
   })
 
   it('rejects impossible calendar days', () => {
     assert.throws(() => parse('2026-02-30'), /invalid/)
   })
 
-  it('formats only yyyy-MM-dd', () => {
+  it('accepts expanded ISO years and round-trips past 9999', () => {
+    assert.equal(addDays('9999-12-31', 1), '+010000-01-01')
+    assert.equal(parse('+010000-01-01'), '+010000-01-01')
+    assert.equal(parse('-000001-01-01'), '-000001-01-01')
+    assert.equal(isValid('+010000-01-01'), true)
+  })
+
+  it('formats only yyyy-MM-dd pattern name', () => {
     assert.equal(format(d), d)
+    assert.equal(format('+010000-01-01'), '+010000-01-01')
     assert.throws(() => format(d, 'MM/dd/yyyy'), /only/)
   })
 
-  it('isValid', () => {
+  it('isValid: strings boolean; Date throws', () => {
     assert.equal(isValid(d), true)
+    assert.equal(isValid('asdf'), false)
     assert.equal(isValid('nope'), false)
-    assert.equal(isValid(new Date()), false)
+    assert.equal(isValid(42), false)
+    assert.throws(() => isValid(new Date()), /Date is not allowed/)
   })
 })
 

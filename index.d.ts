@@ -1,8 +1,10 @@
 import type { Temporal } from 'temporal-polyfill'
 
 /**
- * Calendar day input: ISO 8601 `YYYY-MM-DD` string, or a Temporal.PlainDate.
- * `Date` is rejected at runtime.
+ * Calendar day input: ISO 8601 day string, or a Temporal.PlainDate.
+ * - `YYYY-MM-DD` (years 0000–9999)
+ * - expanded `±YYYYYY-MM-DD` (e.g. `+010000-01-01`)
+ * `Date` is rejected at runtime (TypeError).
  */
 export type DayInput = string | Temporal.PlainDate
 
@@ -19,12 +21,16 @@ export type WeekOptions = {
   weekStartsOn?: 0 | 1 | 2 | 3 | 4 | 5 | 6
 }
 
+/**
+ * True for a valid daymath day string / PlainDate.
+ * Invalid strings → false. `Date` → throws TypeError (not a quiet false).
+ */
 export function isValid(value: unknown): boolean
 
-/** Validate / normalize to ISO 8601 `YYYY-MM-DD`. */
+/** Validate / normalize to ISO 8601 day string (Temporal `toString` form). */
 export function parse(date: DayInput): string
 
-/** Format as `YYYY-MM-DD` (only pattern supported). */
+/** Format as ISO day (only `yyyy-MM-dd` / `YYYY-MM-DD` patterns supported). */
 export function format(date: DayInput, pattern?: 'yyyy-MM-dd' | 'YYYY-MM-DD'): string
 
 export function addDays(date: DayInput, amount: number): string
