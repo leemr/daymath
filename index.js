@@ -4,6 +4,17 @@ import { Temporal as TemporalPolyfill } from 'temporal-polyfill'
 const Temporal = globalThis.Temporal ?? TemporalPolyfill
 
 /** @typedef {string | Temporal.PlainDate} DayInput */
+/**
+ * @typedef {object} Interval
+ * @property {DayInput} start
+ * @property {DayInput} end
+ */
+/**
+ * @typedef {object} WeekOptions
+ * @property {0|1|2|3|4|5|6} [weekStartsOn] 0=Sun … 6=Sat (date-fns default 0)
+ */
+
+// ─── core conversion ───────────────────────────────────────────────
 
 /**
  * Reject Date and non-calendar values. Accept YYYY-MM-DD string or PlainDate.
@@ -18,7 +29,7 @@ function toPlainDate(value, label = 'date') {
     )
   }
   if (typeof value === 'string') {
-    // Strict calendar day: no time, no offset, no week dates.
+    // Strict ISO 8601 calendar date: YYYY-MM-DD only.
     if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
       throw new RangeError(
         `daymath: ${label} must be YYYY-MM-DD (got ${JSON.stringify(value)})`,
@@ -45,6 +56,55 @@ function toDayString(plain) {
   return plain.toString()
 }
 
+/** Temporal ISO weekday 1=Mon…7=Sun → JS/date-fns 0=Sun…6=Sat */
+function isoToJsWeekday(isoDayOfWeek) {
+  return isoDayOfWeek === 7 ? 0 : isoDayOfWeek
+}
+
+/** @param {unknown} n @param {string} label */
+function assertFiniteNumber(n, label) {
+  if (typeof n !== 'number' || !Number.isFinite(n)) {
+    throw new TypeError(`daymath: ${label} must be a finite number`)
+  }
+  if (!Number.isInteger(n)) {
+    throw new RangeError(`daymath: ${label} must be an integer`)
+  }
+}
+
+/** @param {unknown} dates */
+function assertNonEmptyDates(dates) {
+  if (!Array.isArray(dates) || dates.length === 0) {
+    throw new RangeError('daymath: expected a non-empty array of dates')
+  }
+}
+
+/**
+ * @param {WeekOptions} [options]
+ * @returns {0|1|2|3|4|5|6}
+ */
+function weekStartsOnFrom(options) {
+  const w = options?.weekStartsOn ?? 0
+  if (!Number.isInteger(w) || w < 0 || w > 6) {
+    throw new RangeError('daymath: weekStartsOn must be an integer 0…6 (0=Sun)')
+  }
+  return /** @type {0|1|2|3|4|5|6} */ (w)
+}
+
+/**
+ * @param {unknown} interval
+ * @returns {{ start: Temporal.PlainDate, end: Temporal.PlainDate }}
+ */
+function toInterval(interval) {
+  if (interval == null || typeof interval !== 'object') {
+    throw new TypeError('daymath: interval must be { start, end }')
+  }
+  const start = toPlainDate(/** @type {Interval} */ (interval).start, 'start')
+  const end = toPlainDate(/** @type {Interval} */ (interval).end, 'end')
+  return { start, end }
+}
+
+// ─── parse / format / valid ────────────────────────────────────────
+
 /** @param {unknown} value */
 export function isValid(value) {
   try {
@@ -56,7 +116,7 @@ export function isValid(value) {
 }
 
 /**
- * Validate / normalize a calendar day string.
+ * Validate / normalize a calendar day string (ISO 8601 YYYY-MM-DD).
  * @param {DayInput} date
  * @returns {string}
  */
@@ -65,7 +125,7 @@ export function parse(date) {
 }
 
 /**
- * Format as YYYY-MM-DD (only supported pattern for now).
+ * Format as YYYY-MM-DD (only supported pattern).
  * @param {DayInput} date
  * @param {string} [pattern='yyyy-MM-dd']
  * @returns {string}
@@ -78,6 +138,8 @@ export function format(date, pattern = 'yyyy-MM-dd') {
   }
   return toDayString(toPlainDate(date))
 }
+
+// ─── add / sub ─────────────────────────────────────────────────────
 
 /**
  * @param {DayInput} date
@@ -120,7 +182,7 @@ export function subWeeks(date, amount) {
 }
 
 /**
- * Calendar months (Temporal overflow: constrain — e.g. Jan 31 + 1 month → Feb 28/29).
+ * Calendar months (overflow constrain — Jan 31 + 1 month → Feb 28/29).
  * @param {DayInput} date
  * @param {number} amount
  * @returns {string}
@@ -161,6 +223,174 @@ export function subYears(date, amount) {
 }
 
 /**
+ * @param {DayInput} date
+ * @param {number} amount
+ * @returns {string}
+ */
+export function addQuarters(date, amount) {
+  assertFiniteNumber(amount, 'amount')
+  return addMonths(date, amount * 3)
+}
+
+/**
+ * @param {DayInput} date
+ * @param {number} amount
+ * @returns {string}
+ */
+export function subQuarters(date, amount) {
+  assertFiniteNumber(amount, 'amount')
+  return addQuarters(date, -amount)
+}
+
+// ─── getters / setters (date-fns / Date month & weekday indexing) ─
+
+/** @param {DayInput} date @returns {number} */
+export function getYear(date) {
+  return toPlainDate(date).year
+}
+
+/**
+ * Month index like Date/date-fns: 0 = January … 11 = December.
+ * @param {DayInput} date
+ * @returns {number}
+ */
+export function getMonth(date) {
+  return toPlainDate(date).month - 1
+}
+
+/** Day of month 1…31. @param {DayInput} date @returns {number} */
+export function getDate(date) {
+  return toPlainDate(date).day
+}
+
+/**
+ * Weekday like Date/date-fns: 0 = Sunday … 6 = Saturday.
+ * @param {DayInput} date
+ * @returns {number}
+ */
+export function getDay(date) {
+  return isoToJsWeekday(toPlainDate(date).dayOfWeek)
+}
+
+/** @param {DayInput} date @returns {number} */
+export function getDayOfYear(date) {
+  return toPlainDate(date).dayOfYear
+}
+
+/** @param {DayInput} date @returns {number} */
+export function getDaysInMonth(date) {
+  return toPlainDate(date).daysInMonth
+}
+
+/** Quarter 1…4. @param {DayInput} date @returns {number} */
+export function getQuarter(date) {
+  return Math.ceil(toPlainDate(date).month / 3)
+}
+
+/** @param {DayInput} date @returns {boolean} */
+export function isLeapYear(date) {
+  return toPlainDate(date).inLeapYear
+}
+
+/**
+ * @param {DayInput} date
+ * @param {number} year
+ * @returns {string}
+ */
+export function setYear(date, year) {
+  assertFiniteNumber(year, 'year')
+  return toDayString(toPlainDate(date).with({ year }))
+}
+
+/**
+ * @param {DayInput} date
+ * @param {number} month 0 = January … 11 = December (date-fns)
+ * @returns {string}
+ */
+export function setMonth(date, month) {
+  assertFiniteNumber(month, 'month')
+  if (month < 0 || month > 11) {
+    throw new RangeError('daymath: month must be 0…11 (0=January)')
+  }
+  return toDayString(toPlainDate(date).with({ month: month + 1 }))
+}
+
+/**
+ * @param {DayInput} date
+ * @param {number} dayOfMonth
+ * @returns {string}
+ */
+export function setDate(date, dayOfMonth) {
+  assertFiniteNumber(dayOfMonth, 'day')
+  return toDayString(toPlainDate(date).with({ day: dayOfMonth }))
+}
+
+// ─── start / end of unit ───────────────────────────────────────────
+
+/** @param {DayInput} date @returns {string} */
+export function startOfMonth(date) {
+  const d = toPlainDate(date)
+  return toDayString(d.with({ day: 1 }))
+}
+
+/** @param {DayInput} date @returns {string} */
+export function endOfMonth(date) {
+  const d = toPlainDate(date)
+  return toDayString(d.with({ day: d.daysInMonth }))
+}
+
+/** @param {DayInput} date @returns {string} */
+export function startOfYear(date) {
+  const d = toPlainDate(date)
+  return toDayString(d.with({ month: 1, day: 1 }))
+}
+
+/** @param {DayInput} date @returns {string} */
+export function endOfYear(date) {
+  const d = toPlainDate(date)
+  return toDayString(d.with({ month: 12, day: 31 }))
+}
+
+/** @param {DayInput} date @returns {string} */
+export function startOfQuarter(date) {
+  const d = toPlainDate(date)
+  const month = (getQuarter(d) - 1) * 3 + 1
+  return toDayString(d.with({ month, day: 1 }))
+}
+
+/** @param {DayInput} date @returns {string} */
+export function endOfQuarter(date) {
+  const d = toPlainDate(date)
+  const month = getQuarter(d) * 3
+  const mid = d.with({ month, day: 1 })
+  return toDayString(mid.with({ day: mid.daysInMonth }))
+}
+
+/**
+ * @param {DayInput} date
+ * @param {WeekOptions} [options]
+ * @returns {string}
+ */
+export function startOfWeek(date, options) {
+  const d = toPlainDate(date)
+  const weekStartsOn = weekStartsOnFrom(options)
+  const day = isoToJsWeekday(d.dayOfWeek)
+  const diff = (day - weekStartsOn + 7) % 7
+  return toDayString(d.subtract({ days: diff }))
+}
+
+/**
+ * @param {DayInput} date
+ * @param {WeekOptions} [options]
+ * @returns {string}
+ */
+export function endOfWeek(date, options) {
+  return addDays(startOfWeek(date, options), 6)
+}
+
+// ─── differences ───────────────────────────────────────────────────
+
+/**
  * Full calendar days: dateLeft − dateRight (date-fns order).
  * @param {DayInput} dateLeft
  * @param {DayInput} dateRight
@@ -171,6 +401,89 @@ export function differenceInDays(dateLeft, dateRight) {
   const right = toPlainDate(dateRight, 'dateRight')
   return left.since(right, { largestUnit: 'day' }).days
 }
+
+/**
+ * Full weeks (trunc toward 0), like date-fns.
+ * @param {DayInput} dateLeft
+ * @param {DayInput} dateRight
+ * @returns {number}
+ */
+export function differenceInWeeks(dateLeft, dateRight) {
+  return Math.trunc(differenceInDays(dateLeft, dateRight) / 7)
+}
+
+/**
+ * Full months (signed), Temporal since with largestUnit month.
+ * @param {DayInput} dateLeft
+ * @param {DayInput} dateRight
+ * @returns {number}
+ */
+export function differenceInMonths(dateLeft, dateRight) {
+  const left = toPlainDate(dateLeft, 'dateLeft')
+  const right = toPlainDate(dateRight, 'dateRight')
+  const dur = left.since(right, { largestUnit: 'month' })
+  return dur.months
+}
+
+/**
+ * Calendar month index diff: (yL−yR)*12 + (mL−mR). Ignores day-of-month.
+ * @param {DayInput} dateLeft
+ * @param {DayInput} dateRight
+ * @returns {number}
+ */
+export function differenceInCalendarMonths(dateLeft, dateRight) {
+  const left = toPlainDate(dateLeft, 'dateLeft')
+  const right = toPlainDate(dateRight, 'dateRight')
+  return (left.year - right.year) * 12 + (left.month - right.month)
+}
+
+/**
+ * Full years (signed).
+ * @param {DayInput} dateLeft
+ * @param {DayInput} dateRight
+ * @returns {number}
+ */
+export function differenceInYears(dateLeft, dateRight) {
+  const left = toPlainDate(dateLeft, 'dateLeft')
+  const right = toPlainDate(dateRight, 'dateRight')
+  return left.since(right, { largestUnit: 'year' }).years
+}
+
+/**
+ * Calendar year number diff. Ignores month/day.
+ * @param {DayInput} dateLeft
+ * @param {DayInput} dateRight
+ * @returns {number}
+ */
+export function differenceInCalendarYears(dateLeft, dateRight) {
+  return getYear(dateLeft) - getYear(dateRight)
+}
+
+/**
+ * Full quarters (trunc toward 0 of calendar-month/3 style via months).
+ * @param {DayInput} dateLeft
+ * @param {DayInput} dateRight
+ * @returns {number}
+ */
+export function differenceInQuarters(dateLeft, dateRight) {
+  return Math.trunc(differenceInMonths(dateLeft, dateRight) / 3)
+}
+
+/**
+ * Calendar quarter index diff.
+ * @param {DayInput} dateLeft
+ * @param {DayInput} dateRight
+ * @returns {number}
+ */
+export function differenceInCalendarQuarters(dateLeft, dateRight) {
+  const left = toPlainDate(dateLeft, 'dateLeft')
+  const right = toPlainDate(dateRight, 'dateRight')
+  return (
+    (left.year - right.year) * 4 + (getQuarter(left) - getQuarter(right))
+  )
+}
+
+// ─── compare / equal ───────────────────────────────────────────────
 
 /**
  * @param {DayInput} date
@@ -201,6 +514,7 @@ export function isAfter(date, dateToCompare) {
 }
 
 /**
+ * Same calendar day.
  * @param {DayInput} dateLeft
  * @param {DayInput} dateRight
  * @returns {boolean}
@@ -212,6 +526,50 @@ export function isEqual(dateLeft, dateRight) {
       toPlainDate(dateRight, 'dateRight'),
     ) === 0
   )
+}
+
+/** Alias of `isEqual` (date-fns name for same calendar day). */
+export const isSameDay = isEqual
+
+/**
+ * @param {DayInput} dateLeft
+ * @param {DayInput} dateRight
+ * @param {WeekOptions} [options]
+ * @returns {boolean}
+ */
+export function isSameWeek(dateLeft, dateRight, options) {
+  return isEqual(startOfWeek(dateLeft, options), startOfWeek(dateRight, options))
+}
+
+/**
+ * @param {DayInput} dateLeft
+ * @param {DayInput} dateRight
+ * @returns {boolean}
+ */
+export function isSameMonth(dateLeft, dateRight) {
+  const a = toPlainDate(dateLeft, 'dateLeft')
+  const b = toPlainDate(dateRight, 'dateRight')
+  return a.year === b.year && a.month === b.month
+}
+
+/**
+ * @param {DayInput} dateLeft
+ * @param {DayInput} dateRight
+ * @returns {boolean}
+ */
+export function isSameYear(dateLeft, dateRight) {
+  return getYear(dateLeft) === getYear(dateRight)
+}
+
+/**
+ * @param {DayInput} dateLeft
+ * @param {DayInput} dateRight
+ * @returns {boolean}
+ */
+export function isSameQuarter(dateLeft, dateRight) {
+  const a = toPlainDate(dateLeft, 'dateLeft')
+  const b = toPlainDate(dateRight, 'dateRight')
+  return a.year === b.year && getQuarter(a) === getQuarter(b)
 }
 
 /**
@@ -244,7 +602,9 @@ export function compareDesc(dateLeft, dateRight) {
 export function min(dates) {
   assertNonEmptyDates(dates)
   return toDayString(
-    dates.map((d) => toPlainDate(d)).reduce((a, b) => (Temporal.PlainDate.compare(a, b) <= 0 ? a : b)),
+    dates
+      .map((d) => toPlainDate(d))
+      .reduce((a, b) => (Temporal.PlainDate.compare(a, b) <= 0 ? a : b)),
   )
 }
 
@@ -255,23 +615,183 @@ export function min(dates) {
 export function max(dates) {
   assertNonEmptyDates(dates)
   return toDayString(
-    dates.map((d) => toPlainDate(d)).reduce((a, b) => (Temporal.PlainDate.compare(a, b) >= 0 ? a : b)),
+    dates
+      .map((d) => toPlainDate(d))
+      .reduce((a, b) => (Temporal.PlainDate.compare(a, b) >= 0 ? a : b)),
   )
 }
 
-/** @param {unknown} n @param {string} label */
-function assertFiniteNumber(n, label) {
-  if (typeof n !== 'number' || !Number.isFinite(n)) {
-    throw new TypeError(`daymath: ${label} must be a finite number`)
-  }
-  if (!Number.isInteger(n)) {
-    throw new RangeError(`daymath: ${label} must be an integer`)
-  }
+// ─── weekday predicates ────────────────────────────────────────────
+
+/** @param {DayInput} date @returns {boolean} */
+export function isSunday(date) {
+  return getDay(date) === 0
+}
+/** @param {DayInput} date @returns {boolean} */
+export function isMonday(date) {
+  return getDay(date) === 1
+}
+/** @param {DayInput} date @returns {boolean} */
+export function isTuesday(date) {
+  return getDay(date) === 2
+}
+/** @param {DayInput} date @returns {boolean} */
+export function isWednesday(date) {
+  return getDay(date) === 3
+}
+/** @param {DayInput} date @returns {boolean} */
+export function isThursday(date) {
+  return getDay(date) === 4
+}
+/** @param {DayInput} date @returns {boolean} */
+export function isFriday(date) {
+  return getDay(date) === 5
+}
+/** @param {DayInput} date @returns {boolean} */
+export function isSaturday(date) {
+  return getDay(date) === 6
+}
+/** @param {DayInput} date @returns {boolean} */
+export function isWeekend(date) {
+  const d = getDay(date)
+  return d === 0 || d === 6
 }
 
-/** @param {unknown} dates */
-function assertNonEmptyDates(dates) {
-  if (!Array.isArray(dates) || dates.length === 0) {
-    throw new RangeError('daymath: expected a non-empty array of dates')
+/** @param {DayInput} date @returns {boolean} */
+export function isFirstDayOfMonth(date) {
+  return getDate(date) === 1
+}
+
+/** @param {DayInput} date @returns {boolean} */
+export function isLastDayOfMonth(date) {
+  const d = toPlainDate(date)
+  return d.day === d.daysInMonth
+}
+
+// ─── intervals ─────────────────────────────────────────────────────
+
+/**
+ * Inclusive day range. Throws if start > end.
+ * @param {Interval} interval
+ * @returns {string[]}
+ */
+export function eachDayOfInterval(interval) {
+  const { start, end } = toInterval(interval)
+  if (Temporal.PlainDate.compare(start, end) > 0) {
+    throw new RangeError('daymath: interval start must not be after end')
   }
+  /** @type {string[]} */
+  const out = []
+  let cur = start
+  while (Temporal.PlainDate.compare(cur, end) <= 0) {
+    out.push(toDayString(cur))
+    cur = cur.add({ days: 1 })
+  }
+  return out
+}
+
+/**
+ * First day of each month from start’s month through end’s month (date-fns shape).
+ * @param {Interval} interval
+ * @returns {string[]}
+ */
+export function eachMonthOfInterval(interval) {
+  const { start, end } = toInterval(interval)
+  if (Temporal.PlainDate.compare(start, end) > 0) {
+    throw new RangeError('daymath: interval start must not be after end')
+  }
+  /** @type {string[]} */
+  const out = []
+  let cur = start.with({ day: 1 })
+  const last = end.with({ day: 1 })
+  while (Temporal.PlainDate.compare(cur, last) <= 0) {
+    out.push(toDayString(cur))
+    cur = cur.add({ months: 1 })
+  }
+  return out
+}
+
+/**
+ * Jan 1 of each year from start’s year through end’s year.
+ * @param {Interval} interval
+ * @returns {string[]}
+ */
+export function eachYearOfInterval(interval) {
+  const { start, end } = toInterval(interval)
+  if (Temporal.PlainDate.compare(start, end) > 0) {
+    throw new RangeError('daymath: interval start must not be after end')
+  }
+  /** @type {string[]} */
+  const out = []
+  let y = start.year
+  while (y <= end.year) {
+    out.push(toDayString(Temporal.PlainDate.from({ year: y, month: 1, day: 1 })))
+    y += 1
+  }
+  return out
+}
+
+/**
+ * Inclusive: start ≤ date ≤ end.
+ * @param {DayInput} date
+ * @param {Interval} interval
+ * @returns {boolean}
+ */
+export function isWithinInterval(date, interval) {
+  const d = toPlainDate(date)
+  const { start, end } = toInterval(interval)
+  if (Temporal.PlainDate.compare(start, end) > 0) {
+    throw new RangeError('daymath: interval start must not be after end')
+  }
+  return (
+    Temporal.PlainDate.compare(d, start) >= 0 &&
+    Temporal.PlainDate.compare(d, end) <= 0
+  )
+}
+
+/**
+ * Clamp date into [start, end].
+ * @param {DayInput} date
+ * @param {Interval} interval
+ * @returns {string}
+ */
+export function clamp(date, interval) {
+  const d = toPlainDate(date)
+  const { start, end } = toInterval(interval)
+  if (Temporal.PlainDate.compare(start, end) > 0) {
+    throw new RangeError('daymath: interval start must not be after end')
+  }
+  if (Temporal.PlainDate.compare(d, start) < 0) return toDayString(start)
+  if (Temporal.PlainDate.compare(d, end) > 0) return toDayString(end)
+  return toDayString(d)
+}
+
+/**
+ * Whether two inclusive intervals overlap.
+ * @param {Interval} intervalLeft
+ * @param {Interval} intervalRight
+ * @param {{ inclusive?: boolean }} [options] default inclusive true (date-fns default false uses half-open; we default true for plain days)
+ * @returns {boolean}
+ */
+export function areIntervalsOverlapping(intervalLeft, intervalRight, options) {
+  const a = toInterval(intervalLeft)
+  const b = toInterval(intervalRight)
+  if (Temporal.PlainDate.compare(a.start, a.end) > 0) {
+    throw new RangeError('daymath: intervalLeft start must not be after end')
+  }
+  if (Temporal.PlainDate.compare(b.start, b.end) > 0) {
+    throw new RangeError('daymath: intervalRight start must not be after end')
+  }
+  const inclusive = options?.inclusive ?? false
+  if (inclusive) {
+    return (
+      Temporal.PlainDate.compare(a.start, b.end) <= 0 &&
+      Temporal.PlainDate.compare(b.start, a.end) <= 0
+    )
+  }
+  // date-fns default: touch-at-endpoint is NOT overlap
+  return (
+    Temporal.PlainDate.compare(a.start, b.end) < 0 &&
+    Temporal.PlainDate.compare(b.start, a.end) < 0
+  )
 }
