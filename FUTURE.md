@@ -7,7 +7,7 @@ Checked-in backlog. Not a promise of order. Session handoff: local `todo.grok` (
 ## Trust / publish
 
 - **npm publish from GitHub Actions + provenance** — `npm publish --provenance` via OIDC to **registry.npmjs.org**. Needs npm trusted publisher / automation token setup. This is **not** what GitHub Packages “npm registry” docs do by default.
-- **GitHub Packages (`npm.pkg.github.com`)** — optional second registry. Does **not** auto-mirror to the public npmjs.com package. Sidebar “No packages published” only means nothing on **GitHub’s** registry. Ignore unless you want `@leemr/daymath` on GH Packages too.
+- **GitHub Packages** — publish path lives in `scripts/publish-github-packages.mjs` + workflow `publish-github-packages.yml` (`@leemr/daymath`). Not a mirror of npmjs `daymath`; re-run on each version bump / release.
 - **OpenSSF Scorecard** badge once workflows are mature.
 - **`enforce_admins: true`** on branch protection if you want even owner merges to wait on CI (today: required checks; admin can still bypass).
 - **Codecov:** CI upload is wired (`c8` → `lcov` → `codecov-action@v5`). **You** still complete app/token link once (see CONTRIBUTING). Then optionally `fail_ci_if_error: true`.

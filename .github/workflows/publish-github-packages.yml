@@ -1,0 +1,30 @@
+# Publish @leemr/daymath to GitHub Packages (npm.pkg.github.com).
+# Does not publish to registry.npmjs.org (that stays manual / future provenance).
+name: publish-github-packages
+
+on:
+  workflow_dispatch:
+  # Also run when cutting a GitHub Release (optional dual-publish)
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://npm.pkg.github.com
+          scope: '@leemr'
+      - run: npm ci
+      - run: npm test
+      - name: Publish @leemr/daymath to GitHub Packages
+        run: node scripts/publish-github-packages.mjs
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
