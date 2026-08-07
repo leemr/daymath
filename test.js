@@ -104,6 +104,13 @@ describe('parse / format / isValid', () => {
     assert.equal(isValid('+010000-01-01'), true)
   })
 
+  it('accepts the documented range and rejects either side of it', () => {
+    assert.equal(parse('-271821-04-19'), '-271821-04-19') // min PlainDate
+    assert.equal(parse('+275760-09-13'), '+275760-09-13') // max PlainDate
+    assert.throws(() => parse('+275760-09-14'), /invalid date/)
+    assert.throws(() => parse('-271821-04-18'), /invalid date/)
+  })
+
   it('formats only yyyy-MM-dd pattern name', () => {
     assert.equal(format(d), d)
     assert.equal(format('+010000-01-01'), '+010000-01-01')
@@ -127,6 +134,15 @@ describe('add / sub', () => {
     assert.equal(subWeeks(d, 1), '2026-07-30')
   })
 
+  it('day arithmetic wraps months and years (unlike setDate, which constrains)', () => {
+    assert.equal(addDays('2026-08-15', 31), '2026-09-15')
+    assert.equal(addDays('2026-08-15', 17), '2026-09-01')
+    assert.equal(addDays('2026-12-20', 31), '2027-01-20')
+    assert.equal(addDays('2026-02-15', 365), '2027-02-15')
+    assert.equal(subDays('2026-01-01', 1), '2025-12-31')
+    assert.equal(setDate('2026-08-15', 31), '2026-08-31') // stays in August
+  })
+
   it('months constrain end-of-month', () => {
     assert.equal(addMonths('2026-01-31', 1), '2026-02-28')
     assert.equal(addMonths('2024-01-31', 1), '2024-02-29')
@@ -144,6 +160,22 @@ describe('add / sub', () => {
   it('rejects non-integer amounts', () => {
     assert.throws(() => addDays(d, 1.5), /integer/)
     assert.throws(() => addDays(d, NaN), /finite/)
+  })
+
+  it('range overflow keeps the daymath: prefix', () => {
+    for (const [fn, name] of [
+      [addDays, 'addDays'],
+      [addMonths, 'addMonths'],
+      [addYears, 'addYears'],
+    ]) {
+      assert.throws(() => fn(d, 1e9), (err) => {
+        assert.ok(err instanceof RangeError)
+        assert.match(err.message, new RegExp(`^daymath: ${name} could not produce`)) // err.message has no class prefix
+
+        assert.ok(err.cause instanceof Error) // original Temporal error kept
+        return true
+      })
+    }
   })
 })
 
@@ -173,6 +205,16 @@ describe('getters / setters', () => {
     assert.equal(setDate(d, 1), '2026-08-01')
     assert.equal(setMonth('2026-01-31', 1), '2026-02-28') // constrain
     assert.throws(() => setMonth(d, 12), /0…11/)
+  })
+
+  it('setYear / setDate out of range throw with the daymath: prefix', () => {
+    assert.throws(() => setYear(d, 999999), /daymath: setYear could not produce/)
+    assert.throws(() => setDate(d, 0), /daymath: setDate could not produce/)
+  })
+
+  it('setDate constrains past the month end (no date-fns roll-over)', () => {
+    assert.equal(setDate('2026-02-01', 31), '2026-02-28')
+    assert.equal(setDate(d, 99), '2026-08-31')
   })
 })
 
@@ -244,6 +286,7 @@ describe('difference / compare', () => {
     assert.equal(compareAsc('2026-08-01', d), -1)
     assert.equal(compareAsc(d, d), 0)
     assert.equal(compareDesc('2026-08-01', d), 1)
+    assert.ok(Object.is(compareDesc(d, d), 0)) // 0, not -0
     assert.equal(min(['2026-08-06', '2026-01-01', '2026-12-31']), '2026-01-01')
     assert.equal(max(['2026-08-06', '2026-01-01', '2026-12-31']), '2026-12-31')
     assert.throws(() => min([]), /non-empty/)
@@ -310,6 +353,17 @@ describe('intervals', () => {
     )
   })
 
+  it('walkers stop at the last max-PlainDate step instead of overflowing', () => {
+    assert.deepEqual(
+      eachDayOfInterval({ start: '+275760-09-12', end: '+275760-09-13' }),
+      ['+275760-09-12', '+275760-09-13'],
+    )
+    assert.deepEqual(
+      eachMonthOfInterval({ start: '+275760-09-01', end: '+275760-09-13' }),
+      ['+275760-09-01'],
+    )
+  })
+
   it('isWithinInterval / clamp', () => {
     const iv = { start: '2026-08-01', end: '2026-08-10' }
     assert.equal(isWithinInterval('2026-08-05', iv), true)
@@ -348,5 +402,66 @@ describe('intervals', () => {
         }),
       /intervalRight/,
     )
+  })
+})
+
+describe('range edges', () => {
+  const MIN = '-271821-04-19' // first representable PlainDate
+  const MAX = '+275760-09-13' // last representable PlainDate
+
+  // Every call below asks for a day that cannot exist. Throwing is correct; the
+  // point of the test is that the message stays ours and names the function the
+  // caller actually called, never an internal helper it delegated to.
+  const cases = [
+    ['addDays', () => addDays(MAX, 1)],
+    ['subDays', () => subDays(MIN, 1)],
+    ['addWeeks', () => addWeeks(MAX, 1)],
+    ['subWeeks', () => subWeeks(MIN, 1)],
+    ['addMonths', () => addMonths(MAX, 1)],
+    ['subMonths', () => subMonths(MIN, 1)],
+    ['addQuarters', () => addQuarters(MAX, 1)],
+    ['subQuarters', () => subQuarters(MIN, 1)],
+    ['addYears', () => addYears(MAX, 1)],
+    ['subYears', () => subYears(MIN, 1)],
+    ['setYear', () => setYear(MIN, -271822)],
+    ['setMonth', () => setMonth(MIN, 0)],
+    ['setDate', () => setDate(MIN, 1)],
+    ['startOfWeek', () => startOfWeek(MIN)],
+    ['endOfWeek', () => endOfWeek(MIN)],
+    ['startOfMonth', () => startOfMonth(MIN)],
+    ['endOfMonth', () => endOfMonth(MAX)],
+    ['startOfQuarter', () => startOfQuarter(MIN)],
+    ['endOfQuarter', () => endOfQuarter(MAX)],
+    ['startOfYear', () => startOfYear(MIN)],
+    ['endOfYear', () => endOfYear(MAX)],
+    ['isSameWeek', () => isSameWeek(MIN, MIN)],
+    ['eachMonthOfInterval', () => eachMonthOfInterval({ start: MIN, end: '-271821-05-01' })],
+    ['eachYearOfInterval', () => eachYearOfInterval({ start: MIN, end: '-271820-01-01' })],
+  ]
+
+  for (const [name, call] of cases) {
+    it(`${name} throws with its own daymath: label`, () => {
+      assert.throws(call, (err) => {
+        assert.ok(err instanceof RangeError)
+        assert.equal(
+          err.message.startsWith(`daymath: ${name} could not produce a valid date`),
+          true,
+          `${name} reported: ${err.message}`,
+        )
+        assert.ok(err.cause instanceof Error) // original Temporal error kept
+        return true
+      })
+    })
+  }
+
+  it('works right up to the edge it refuses to cross', () => {
+    assert.equal(addDays(MAX, 0), MAX)
+    assert.equal(subDays(MAX, 1), '+275760-09-12')
+    assert.equal(addDays(MIN, 1), '-271821-04-20')
+    assert.equal(startOfMonth(MAX), '+275760-09-01')
+    assert.equal(endOfMonth(MIN), '-271821-04-30')
+    assert.deepEqual(eachYearOfInterval({ start: '+275760-01-01', end: MAX }), [
+      '+275760-01-01',
+    ])
   })
 })

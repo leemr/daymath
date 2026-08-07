@@ -50,6 +50,8 @@ node examples/basic.mjs   # from a clone
 
 `Date` **throws** (including `isValid`). `isValid('asdf')` → `false`.
 
+Range: `-271821-04-19` … `+275760-09-13` — the `Temporal.PlainDate` limit, roughly ±10⁸ days from the epoch. A day outside it throws a `RangeError`.
+
 ## date-fns parity (names, not `Date`)
 
 | Topic | daymath |
@@ -88,7 +90,7 @@ Uses global `Temporal` when present; otherwise [`temporal-polyfill`](https://www
 
 ## Types & tests
 
-Plain JS + `index.d.ts` (no compile step). CI runs on Node 18, 20, and 22.
+Plain JS + `index.d.ts` (no compile step). CI runs on Node 18, 20, 22, 24, and 26; the coverage gate runs on 24.
 
 ```bash
 npm test

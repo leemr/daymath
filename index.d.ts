@@ -4,6 +4,9 @@ import type { Temporal } from 'temporal-polyfill'
  * Calendar day input: ISO 8601 day string, or a Temporal.PlainDate.
  * - `YYYY-MM-DD` (years 0000–9999)
  * - expanded `±YYYYYY-MM-DD` (e.g. `+010000-01-01`)
+ *
+ * Usable range is the Temporal `PlainDate` range `-271821-04-19` …
+ * `+275760-09-13`; a day outside it throws a `RangeError`.
  * `Date` is rejected at runtime (TypeError).
  */
 export type DayInput = string | Temporal.PlainDate

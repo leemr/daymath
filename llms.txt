@@ -26,6 +26,7 @@ import { addDays, differenceInDays, isSameDay } from 'daymath'
 ## Contract
 
 - Inputs: ISO day string `YYYY-MM-DD` or expanded `±YYYYYY-MM-DD`, or Temporal.PlainDate
+- Range: `-271821-04-19` … `+275760-09-13` (Temporal PlainDate limit); outside it throws RangeError
 - Outputs: ISO day strings (Temporal toString form)
 - Date objects: TypeError on every public path including isValid(Date)
 - isValid(badString): false

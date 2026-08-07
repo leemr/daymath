@@ -7,6 +7,11 @@ const Temporal = globalThis.Temporal ?? TemporalPolyfill
  * ISO 8601 calendar day string:
  * - `YYYY-MM-DD` (years 0000–9999)
  * - expanded `±YYYYYY-MM-DD` (Temporal form, e.g. `+010000-01-01`)
+ *
+ * The shape passes this regex; the value must also fall inside the Temporal
+ * `PlainDate` range `-271821-04-19` … `+275760-09-13` (roughly ±10^8 days from
+ * the epoch). Outside it, Temporal throws and we re-throw with the `daymath:`
+ * prefix.
  */
 const ISO_DAY =
   /^(?:[+-]\d{6}|\d{4})-\d{2}-\d{2}$/
@@ -76,6 +81,40 @@ function assertFiniteNumber(n, label) {
   if (!Number.isInteger(n)) {
     throw new RangeError(`daymath: ${label} must be an integer`)
   }
+}
+
+/**
+ * Run a Temporal op and keep the `daymath:` message contract when it fails.
+ * Temporal throws bare `Out-of-bounds date` / `Non-positive day`; we prefix and
+ * keep the original text plus `cause`. Covers both a result past the range and
+ * an argument Temporal refuses outright, hence the neutral wording.
+ * @template T
+ * @param {string} label
+ * @param {() => T} op
+ * @returns {T}
+ */
+function guardRange(label, op) {
+  try {
+    return op()
+  } catch (err) {
+    throw new RangeError(
+      `daymath: ${label} could not produce a valid date (${/** @type {Error} */ (err).message})`,
+      { cause: err },
+    )
+  }
+}
+
+/**
+ * Shared body for every add/sub function. Each caller passes its own name, so
+ * the message never reports a function the caller did not call.
+ * @param {DayInput} date
+ * @param {{ days?: number, months?: number, years?: number }} delta
+ * @param {string} label
+ * @returns {string}
+ */
+function addDuration(date, delta, label) {
+  const d = toPlainDate(date)
+  return guardRange(label, () => toDayString(d.add(delta)))
 }
 
 /** @param {unknown} dates */
@@ -166,7 +205,7 @@ export function format(date, pattern = 'yyyy-MM-dd') {
  */
 export function addDays(date, amount) {
   assertFiniteNumber(amount, 'amount')
-  return toDayString(toPlainDate(date).add({ days: amount }))
+  return addDuration(date, { days: amount }, 'addDays')
 }
 
 /**
@@ -176,7 +215,7 @@ export function addDays(date, amount) {
  */
 export function subDays(date, amount) {
   assertFiniteNumber(amount, 'amount')
-  return addDays(date, -amount)
+  return addDuration(date, { days: -amount }, 'subDays')
 }
 
 /**
@@ -186,7 +225,9 @@ export function subDays(date, amount) {
  */
 export function addWeeks(date, amount) {
   assertFiniteNumber(amount, 'amount')
-  return addDays(date, amount * 7)
+  const days = amount * 7 // re-check: 7x a finite amount can still reach Infinity
+  assertFiniteNumber(days, 'amount')
+  return addDuration(date, { days }, 'addWeeks')
 }
 
 /**
@@ -196,7 +237,9 @@ export function addWeeks(date, amount) {
  */
 export function subWeeks(date, amount) {
   assertFiniteNumber(amount, 'amount')
-  return addWeeks(date, -amount)
+  const days = -amount * 7
+  assertFiniteNumber(days, 'amount')
+  return addDuration(date, { days }, 'subWeeks')
 }
 
 /**
@@ -207,7 +250,7 @@ export function subWeeks(date, amount) {
  */
 export function addMonths(date, amount) {
   assertFiniteNumber(amount, 'amount')
-  return toDayString(toPlainDate(date).add({ months: amount }))
+  return addDuration(date, { months: amount }, 'addMonths')
 }
 
 /**
@@ -217,7 +260,7 @@ export function addMonths(date, amount) {
  */
 export function subMonths(date, amount) {
   assertFiniteNumber(amount, 'amount')
-  return addMonths(date, -amount)
+  return addDuration(date, { months: -amount }, 'subMonths')
 }
 
 /**
@@ -227,7 +270,7 @@ export function subMonths(date, amount) {
  */
 export function addYears(date, amount) {
   assertFiniteNumber(amount, 'amount')
-  return toDayString(toPlainDate(date).add({ years: amount }))
+  return addDuration(date, { years: amount }, 'addYears')
 }
 
 /**
@@ -237,7 +280,7 @@ export function addYears(date, amount) {
  */
 export function subYears(date, amount) {
   assertFiniteNumber(amount, 'amount')
-  return addYears(date, -amount)
+  return addDuration(date, { years: -amount }, 'subYears')
 }
 
 /**
@@ -247,7 +290,9 @@ export function subYears(date, amount) {
  */
 export function addQuarters(date, amount) {
   assertFiniteNumber(amount, 'amount')
-  return addMonths(date, amount * 3)
+  const months = amount * 3
+  assertFiniteNumber(months, 'amount')
+  return addDuration(date, { months }, 'addQuarters')
 }
 
 /**
@@ -257,7 +302,9 @@ export function addQuarters(date, amount) {
  */
 export function subQuarters(date, amount) {
   assertFiniteNumber(amount, 'amount')
-  return addQuarters(date, -amount)
+  const months = -amount * 3
+  assertFiniteNumber(months, 'amount')
+  return addDuration(date, { months }, 'subQuarters')
 }
 
 // ─── getters / setters (date-fns / Date month & weekday indexing) ─
@@ -317,7 +364,8 @@ export function isLeapYear(date) {
  */
 export function setYear(date, year) {
   assertFiniteNumber(year, 'year')
-  return toDayString(toPlainDate(date).with({ year }))
+  const d = toPlainDate(date)
+  return guardRange('setYear', () => toDayString(d.with({ year })))
 }
 
 /**
@@ -330,58 +378,67 @@ export function setMonth(date, month) {
   if (month < 0 || month > 11) {
     throw new RangeError('daymath: month must be 0…11 (0=January)')
   }
-  return toDayString(toPlainDate(date).with({ month: month + 1 }))
+  const d = toPlainDate(date)
+  return guardRange('setMonth', () => toDayString(d.with({ month: month + 1 })))
 }
 
 /**
  * @param {DayInput} date
- * @param {number} dayOfMonth
+ * @param {number} dayOfMonth 1…31; a day past the month end constrains to the
+ * last day of that month (no roll-over into the next month, unlike date-fns)
  * @returns {string}
  */
 export function setDate(date, dayOfMonth) {
   assertFiniteNumber(dayOfMonth, 'day')
-  return toDayString(toPlainDate(date).with({ day: dayOfMonth }))
+  const d = toPlainDate(date)
+  return guardRange('setDate', () => toDayString(d.with({ day: dayOfMonth })))
 }
 
 // ─── start / end of unit ───────────────────────────────────────────
 
+// The first/last day of a unit can fall outside the PlainDate range even when
+// the input is inside it — startOfMonth('-271821-04-19') wants April 1st, which
+// is below the minimum. Throwing is right; guardRange keeps the message ours.
+
 /** @param {DayInput} date @returns {string} */
 export function startOfMonth(date) {
   const d = toPlainDate(date)
-  return toDayString(d.with({ day: 1 }))
+  return guardRange('startOfMonth', () => toDayString(d.with({ day: 1 })))
 }
 
 /** @param {DayInput} date @returns {string} */
 export function endOfMonth(date) {
   const d = toPlainDate(date)
-  return toDayString(d.with({ day: d.daysInMonth }))
+  return guardRange('endOfMonth', () => toDayString(d.with({ day: d.daysInMonth })))
 }
 
 /** @param {DayInput} date @returns {string} */
 export function startOfYear(date) {
   const d = toPlainDate(date)
-  return toDayString(d.with({ month: 1, day: 1 }))
+  return guardRange('startOfYear', () => toDayString(d.with({ month: 1, day: 1 })))
 }
 
 /** @param {DayInput} date @returns {string} */
 export function endOfYear(date) {
   const d = toPlainDate(date)
-  return toDayString(d.with({ month: 12, day: 31 }))
+  return guardRange('endOfYear', () => toDayString(d.with({ month: 12, day: 31 })))
 }
 
 /** @param {DayInput} date @returns {string} */
 export function startOfQuarter(date) {
   const d = toPlainDate(date)
   const month = (getQuarter(d) - 1) * 3 + 1
-  return toDayString(d.with({ month, day: 1 }))
+  return guardRange('startOfQuarter', () => toDayString(d.with({ month, day: 1 })))
 }
 
 /** @param {DayInput} date @returns {string} */
 export function endOfQuarter(date) {
   const d = toPlainDate(date)
   const month = getQuarter(d) * 3
-  const mid = d.with({ month, day: 1 })
-  return toDayString(mid.with({ day: mid.daysInMonth }))
+  return guardRange('endOfQuarter', () => {
+    const mid = d.with({ month, day: 1 })
+    return toDayString(mid.with({ day: mid.daysInMonth }))
+  })
 }
 
 /**
@@ -391,10 +448,19 @@ export function endOfQuarter(date) {
  */
 export function startOfWeek(date, options) {
   const d = toPlainDate(date)
+  const diff = daysIntoWeek(d, options)
+  return guardRange('startOfWeek', () => toDayString(d.subtract({ days: diff })))
+}
+
+/**
+ * How far the day sits past the start of its week.
+ * @param {Temporal.PlainDate} d
+ * @param {WeekOptions} [options]
+ * @returns {number}
+ */
+function daysIntoWeek(d, options) {
   const weekStartsOn = weekStartsOnFrom(options)
-  const day = isoToJsWeekday(d.dayOfWeek)
-  const diff = (day - weekStartsOn + 7) % 7
-  return toDayString(d.subtract({ days: diff }))
+  return (isoToJsWeekday(d.dayOfWeek) - weekStartsOn + 7) % 7
 }
 
 /**
@@ -403,7 +469,12 @@ export function startOfWeek(date, options) {
  * @returns {string}
  */
 export function endOfWeek(date, options) {
-  return addDays(startOfWeek(date, options), 6)
+  const d = toPlainDate(date)
+  const diff = daysIntoWeek(d, options)
+  // one guard for the whole walk, so a failure at either end says endOfWeek
+  return guardRange('endOfWeek', () =>
+    toDayString(d.subtract({ days: diff }).add({ days: 6 })),
+  )
 }
 
 // ─── differences ───────────────────────────────────────────────────
@@ -556,7 +627,14 @@ export const isSameDay = isEqual
  * @returns {boolean}
  */
 export function isSameWeek(dateLeft, dateRight, options) {
-  return isEqual(startOfWeek(dateLeft, options), startOfWeek(dateRight, options))
+  const left = toPlainDate(dateLeft, 'dateLeft')
+  const right = toPlainDate(dateRight, 'dateRight')
+  // own guard, so a week start below the minimum does not say startOfWeek
+  return guardRange('isSameWeek', () =>
+    left.subtract({ days: daysIntoWeek(left, options) }).equals(
+      right.subtract({ days: daysIntoWeek(right, options) }),
+    ),
+  )
 }
 
 /**
@@ -610,7 +688,8 @@ export function compareAsc(dateLeft, dateRight) {
  * @returns {-1 | 0 | 1}
  */
 export function compareDesc(dateLeft, dateRight) {
-  return /** @type {-1 | 0 | 1} */ (-compareAsc(dateLeft, dateRight))
+  // `|| 0` normalises -0 for equal days
+  return /** @type {-1 | 0 | 1} */ (-compareAsc(dateLeft, dateRight) || 0)
 }
 
 /**
@@ -701,8 +780,11 @@ export function eachDayOfInterval(interval) {
   /** @type {string[]} */
   const out = []
   let cur = start
-  while (Temporal.PlainDate.compare(cur, end) <= 0) {
+  // break on the last day, never step past it — an add beyond the max
+  // PlainDate (+275760-09-13) throws
+  for (;;) {
     out.push(toDayString(cur))
+    if (Temporal.PlainDate.compare(cur, end) >= 0) break
     cur = cur.add({ days: 1 })
   }
   return out
@@ -720,10 +802,16 @@ export function eachMonthOfInterval(interval) {
   }
   /** @type {string[]} */
   const out = []
-  let cur = start.with({ day: 1 })
-  const last = end.with({ day: 1 })
-  while (Temporal.PlainDate.compare(cur, last) <= 0) {
+  // the 1st of start's month can sit below the minimum PlainDate
+  const [cur0, last] = guardRange('eachMonthOfInterval', () => [
+    start.with({ day: 1 }),
+    end.with({ day: 1 }),
+  ])
+  let cur = cur0
+  // same boundary rule as eachDayOfInterval
+  for (;;) {
     out.push(toDayString(cur))
+    if (Temporal.PlainDate.compare(cur, last) >= 0) break
     cur = cur.add({ months: 1 })
   }
   return out
@@ -742,10 +830,13 @@ export function eachYearOfInterval(interval) {
   /** @type {string[]} */
   const out = []
   let y = start.year
-  while (y <= end.year) {
-    out.push(toDayString(Temporal.PlainDate.from({ year: y, month: 1, day: 1 })))
-    y += 1
-  }
+  // Jan 1 of start's year can sit below the minimum PlainDate
+  guardRange('eachYearOfInterval', () => {
+    while (y <= end.year) {
+      out.push(toDayString(Temporal.PlainDate.from({ year: y, month: 1, day: 1 })))
+      y += 1
+    }
+  })
   return out
 }
 
@@ -788,7 +879,7 @@ export function clamp(date, interval) {
  * Whether two inclusive intervals overlap.
  * @param {Interval} intervalLeft
  * @param {Interval} intervalRight
- * @param {{ inclusive?: boolean }} [options] default inclusive true (date-fns default false uses half-open; we default true for plain days)
+ * @param {{ inclusive?: boolean }} [options] `inclusive` defaults to false, like date-fns: intervals that only touch at an endpoint do not overlap
  * @returns {boolean}
  */
 export function areIntervalsOverlapping(intervalLeft, intervalRight, options) {
