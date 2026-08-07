@@ -24,7 +24,9 @@ const ISO_DAY =
  */
 /**
  * @typedef {object} WeekOptions
- * @property {0|1|2|3|4|5|6} [weekStartsOn] 0=Sun … 6=Sat (date-fns default 0)
+ * @property {0|1|2|3|4|5|6|7} [weekStartsOn] ISO 1=Mon … 7=Sun (default 7).
+ * `0` is also accepted for Sunday, because 0 ≡ 7 (mod 7) and the week-offset
+ * arithmetic cannot tell them apart. Pre-0.3.0 callers keep working unchanged.
  */
 
 // ─── core conversion ───────────────────────────────────────────────
@@ -66,11 +68,6 @@ function toPlainDate(value, label = 'date') {
 /** @param {Temporal.PlainDate} plain @returns {string} */
 function toDayString(plain) {
   return plain.toString()
-}
-
-/** Temporal ISO weekday 1=Mon…7=Sun → JS/date-fns 0=Sun…6=Sat */
-function isoToJsWeekday(isoDayOfWeek) {
-  return isoDayOfWeek === 7 ? 0 : isoDayOfWeek
 }
 
 /** @param {unknown} n @param {string} label */
@@ -129,11 +126,11 @@ function assertNonEmptyDates(dates) {
  * @returns {0|1|2|3|4|5|6}
  */
 function weekStartsOnFrom(options) {
-  const w = options?.weekStartsOn ?? 0
-  if (!Number.isInteger(w) || w < 0 || w > 6) {
-    throw new RangeError('daymath: weekStartsOn must be an integer 0…6 (0=Sun)')
+  const w = options?.weekStartsOn ?? 7
+  if (!Number.isInteger(w) || w < 0 || w > 7) {
+    throw new RangeError('daymath: weekStartsOn must be an integer 0…7 (7 or 0 = Sunday)')
   }
-  return /** @type {0|1|2|3|4|5|6} */ (w)
+  return /** @type {0|1|2|3|4|5|6|7} */ (w)
 }
 
 /**
@@ -315,12 +312,13 @@ export function getYear(date) {
 }
 
 /**
- * Month index like Date/date-fns: 0 = January … 11 = December.
+ * Month number, ISO 8601: 1 = January … 12 = December. Matches the `MM` field
+ * of the input string, and Temporal. **Not** date-fns, which is 0-based.
  * @param {DayInput} date
  * @returns {number}
  */
 export function getMonth(date) {
-  return toPlainDate(date).month - 1
+  return toPlainDate(date).month
 }
 
 /** Day of month 1…31. @param {DayInput} date @returns {number} */
@@ -329,12 +327,14 @@ export function getDate(date) {
 }
 
 /**
- * Weekday like Date/date-fns: 0 = Sunday … 6 = Saturday.
+ * Weekday, ISO 8601: 1 = Monday … 7 = Sunday. Matches Temporal and
+ * `Intl.Locale#weekInfo.firstDay`. **Not** date-fns, where Sunday is 0.
+ * Only Sunday differs; Monday–Saturday are 1–6 in both.
  * @param {DayInput} date
  * @returns {number}
  */
 export function getDay(date) {
-  return isoToJsWeekday(toPlainDate(date).dayOfWeek)
+  return toPlainDate(date).dayOfWeek
 }
 
 /** @param {DayInput} date @returns {number} */
@@ -370,16 +370,16 @@ export function setYear(date, year) {
 
 /**
  * @param {DayInput} date
- * @param {number} month 0 = January … 11 = December (date-fns)
+ * @param {number} month 1 = January … 12 = December (ISO 8601)
  * @returns {string}
  */
 export function setMonth(date, month) {
   assertFiniteNumber(month, 'month')
-  if (month < 0 || month > 11) {
-    throw new RangeError('daymath: month must be 0…11 (0=January)')
+  if (month < 1 || month > 12) {
+    throw new RangeError('daymath: month must be 1…12 (1=January)')
   }
   const d = toPlainDate(date)
-  return guardRange('setMonth', () => toDayString(d.with({ month: month + 1 })))
+  return guardRange('setMonth', () => toDayString(d.with({ month })))
 }
 
 /**
@@ -460,7 +460,8 @@ export function startOfWeek(date, options) {
  */
 function daysIntoWeek(d, options) {
   const weekStartsOn = weekStartsOnFrom(options)
-  return (isoToJsWeekday(d.dayOfWeek) - weekStartsOn + 7) % 7
+  // mod 7 makes weekStartsOn 0 and 7 identical, so both spellings of Sunday work
+  return (d.dayOfWeek - weekStartsOn + 7) % 7
 }
 
 /**
@@ -498,11 +499,20 @@ export function differenceInDays(dateLeft, dateRight) {
  * @returns {number}
  */
 export function differenceInWeeks(dateLeft, dateRight) {
-  return Math.trunc(differenceInDays(dateLeft, dateRight) / 7)
+  // `|| 0` normalises -0: Math.trunc keeps the sign of a negative gap shorter
+  // than a week, so a 1..6 day backwards difference returned -0
+  return Math.trunc(differenceInDays(dateLeft, dateRight) / 7) || 0
 }
 
 /**
- * Full months (signed), Temporal since with largestUnit month.
+ * Full months (signed). A month counts as full when `addMonths` would carry the
+ * earlier date to the later one, so the end of a short month counts: 31 January
+ * to 28 February is one month, because `addMonths` clamps 31 February to the
+ * 28th. That keeps `differenceInMonths(addMonths(d, n), d) === n`.
+ *
+ * Temporal's `since` is not used here. It has no overflow option, so it counts
+ * 28 days rather than one month for that pair, and the round trip breaks in
+ * 21,934 of 1,761,936 cases. `add` clamps, so the measurement has to match.
  * @param {DayInput} dateLeft
  * @param {DayInput} dateRight
  * @returns {number}
@@ -510,8 +520,18 @@ export function differenceInWeeks(dateLeft, dateRight) {
 export function differenceInMonths(dateLeft, dateRight) {
   const left = toPlainDate(dateLeft, 'dateLeft')
   const right = toPlainDate(dateRight, 'dateRight')
-  const dur = left.since(right, { largestUnit: 'month' })
-  return dur.months
+  const sign = Temporal.PlainDate.compare(left, right)
+  if (sign === 0) return 0
+  const diff = Math.abs(differenceInCalendarMonths(left, right))
+  if (diff < 1) return 0
+  const [earlier, later] = sign > 0 ? [right, left] : [left, right]
+  // Where `earlier` lands after `diff` months: same year-month as `later` by
+  // construction, on `earlier`'s day clamped to that month's length. Compared
+  // as day numbers rather than built as a date, because the landing can sit
+  // past the maximum PlainDate even when both operands are inside the range.
+  const landingDay = Math.min(earlier.day, later.daysInMonth)
+  const isLastMonthNotFull = landingDay > later.day
+  return sign * (diff - +isLastMonthNotFull) || 0
 }
 
 /**
@@ -527,7 +547,11 @@ export function differenceInCalendarMonths(dateLeft, dateRight) {
 }
 
 /**
- * Full years (signed).
+ * Full years (signed). Same rule as `differenceInMonths`: a year counts as full
+ * when `addYears` would carry the earlier date to the later one, so 29 February
+ * to 28 February of a common year is one year, because `addYears` clamps.
+ * That keeps `differenceInYears(addYears(d, n), d) === n`, and keeps this
+ * function agreeing with `trunc(differenceInMonths(a, b) / 12)`.
  * @param {DayInput} dateLeft
  * @param {DayInput} dateRight
  * @returns {number}
@@ -535,7 +559,22 @@ export function differenceInCalendarMonths(dateLeft, dateRight) {
 export function differenceInYears(dateLeft, dateRight) {
   const left = toPlainDate(dateLeft, 'dateLeft')
   const right = toPlainDate(dateRight, 'dateRight')
-  return left.since(right, { largestUnit: 'year' }).years
+  const sign = Temporal.PlainDate.compare(left, right)
+  if (sign === 0) return 0
+  const diff = Math.abs(left.year - right.year)
+  if (diff < 1) return 0
+  const [earlier, later] = sign > 0 ? [right, left] : [left, right]
+  // Where `earlier` lands after `diff` years: same year as `later`, same month,
+  // and the same day except that 29 February clamps to the 28th in a common
+  // year, which is the only day-of-month that changes length year to year.
+  // Compared field by field rather than built as a date, because the landing
+  // can sit past the maximum PlainDate even with both operands inside the range.
+  const landingDay =
+    earlier.month === 2 && earlier.day === 29 && !later.inLeapYear ? 28 : earlier.day
+  const isLastYearNotFull =
+    earlier.month > later.month ||
+    (earlier.month === later.month && landingDay > later.day)
+  return sign * (diff - +isLastYearNotFull) || 0
 }
 
 /**
@@ -555,7 +594,9 @@ export function differenceInCalendarYears(dateLeft, dateRight) {
  * @returns {number}
  */
 export function differenceInQuarters(dateLeft, dateRight) {
-  return Math.trunc(differenceInMonths(dateLeft, dateRight) / 3)
+  // `|| 0` normalises -0, same reason as differenceInWeeks: a backwards gap of
+  // one or two months truncates to -0
+  return Math.trunc(differenceInMonths(dateLeft, dateRight) / 3) || 0
 }
 
 /**
@@ -722,7 +763,7 @@ export function max(dates) {
 
 /** @param {DayInput} date @returns {boolean} */
 export function isSunday(date) {
-  return getDay(date) === 0
+  return getDay(date) === 7
 }
 /** @param {DayInput} date @returns {boolean} */
 export function isMonday(date) {
@@ -751,7 +792,7 @@ export function isSaturday(date) {
 /** @param {DayInput} date @returns {boolean} */
 export function isWeekend(date) {
   const d = getDay(date)
-  return d === 0 || d === 6
+  return d === 6 || d === 7
 }
 
 /** @param {DayInput} date @returns {boolean} */

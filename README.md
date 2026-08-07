@@ -8,7 +8,7 @@
 
 **ISO 8601** calendar day math. **date-fns-shaped** names. **Temporal.PlainDate** under the hood.
 
-No `Date`. No time zones. No silent “local now.”
+No `Date`. No time zones. No silent “local now.” ISO 8601 ❤️
 
 [**Play →**](https://leemr.github.io/daymath/) · [npm](https://www.npmjs.com/package/daymath) · [Changelog](./CHANGELOG.md) · [Contributing](./CONTRIBUTING.md) · [FUTURE](./FUTURE.md)
 
@@ -59,9 +59,9 @@ Range: `-271821-04-19` … `+275760-09-13` — the `Temporal.PlainDate` limit, r
 | Values | ISO day **strings**, not `Date` |
 | `isSameDay` | Alias of `isEqual` |
 | `isValid` | Valid daymath day; **`Date` throws** |
-| `getMonth` / `setMonth` | **0–11** (0 = January) |
-| `getDay` | **0–6** (0 = Sunday) |
-| `weekStartsOn` | default `0` (Sunday) |
+| `getMonth` / `setMonth` | **1–12** (1 = January) — ISO, **not** date-fns |
+| `getDay` | **1–7** (1 = Monday, 7 = Sunday) — ISO, **not** date-fns |
+| `weekStartsOn` | default `7` (Sunday); `0` also accepted |
 | Intervals | `{ start, end }` |
 
 ## API

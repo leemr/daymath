@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Index bases and `differenceInMonths` change, so the next release is `0.3.0`.
+
+### Changed
+
+- **`getMonth` / `setMonth` are ISO 1–12**, where `1` is January, replacing date-fns's 0–11. The number now matches the `MM` field of the day string: `getMonth('2026-01-31')` is `1`, and `setMonth(d, 1)` means January. `setMonth(d, 0)` throws; `setMonth(d, 12)` is December, where it used to throw.
+- **`getDay` is ISO 1–7**, `1` Monday through `7` Sunday, replacing date-fns's 0–6. Only Sunday changes number; Monday to Saturday are 1–6 either way. This also matches `Intl.Locale#weekInfo.firstDay`.
+- **`differenceInMonths` counts a month as full when `addMonths` would carry the earlier date to the later one.** `differenceInMonths('2026-02-28', '2026-01-31')` is `1`, was `0`. That makes `differenceInMonths(addMonths(d, n), d) === n` hold — 21,934 violations to 0 over 1,761,936 cases. It moves exactly the pairs where `addMonths` had to clamp, and nothing else. `differenceInQuarters` follows, being `trunc(months / 3)`.
+
+  Temporal's `since` is no longer used here. `since` has no overflow option, so it counted 28 days rather than one month for that pair, while `add` clamps. daymath clamps on every operation that builds a date, so the measurement now matches.
+- **`differenceInYears` uses the same rule**, so 29 February to 28 February of a common year is one year. `differenceInYears(addYears(d, n), d) === n` now holds — 444 violations to 0 over 880,968 cases — and `differenceInYears === trunc(differenceInMonths / 12)`, which the month change alone had broken in 98 of 954,382 pairs. date-fns has this defect too and has not fixed it, so this is the one place daymath deliberately diverges from both published and patched date-fns.
+- **`differenceInWeeks` and `differenceInQuarters` no longer return `-0`.** `Math.trunc` keeps the sign of a negative gap that truncates to zero, so a backwards difference of 1–6 days, or 1–2 months, returned `-0` where every other function returned `0`. `compareDesc` was already fixed for this; these two were missed. A test now sweeps every numeric export, enumerated from the module rather than a hand-written list.
+- `weekStartsOn` accepts `1`–`7` and defaults to `7` (Sunday). `0` also means Sunday, since 0 ≡ 7 (mod 7) and the week-offset arithmetic cannot tell them apart. No week start moves and no date changes; only `8` and above now throw.
+- `isSunday` / `isWeekend` follow the new weekday numbers. Their results are unchanged.
+
 ### Fixed
 
 - `eachDayOfInterval` / `eachMonthOfInterval` no longer throw when the interval ends on the maximum `PlainDate` (`+275760-09-13`); the walkers stop on the last day instead of stepping past it

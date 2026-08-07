@@ -30,7 +30,8 @@ import { addDays, differenceInDays, isSameDay } from 'daymath'
 - Outputs: ISO day strings (Temporal toString form)
 - Date objects: TypeError on every public path including isValid(Date)
 - isValid(badString): false
-- getMonth/setMonth: 0–11 like date-fns; getDay: 0=Sunday; weekStartsOn default 0
+- getMonth/setMonth: 1–12 ISO (1=January), NOT date-fns 0-based; getDay: 1=Monday…7=Sunday ISO, NOT date-fns 0=Sunday; weekStartsOn default 7, 0 also accepted for Sunday
+- differenceInMonths counts a month as full when addMonths would carry the earlier date to the later one, so 2026-01-31 to 2026-02-28 is 1; differenceInMonths(addMonths(d,n),d) === n always holds
 - isSameDay is an alias of isEqual
 - format only supports pattern yyyy-MM-dd (identity normalize); not locale display
 - Intervals: { start, end }; areIntervalsOverlapping defaults inclusive false like date-fns
