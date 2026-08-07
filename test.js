@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import { Temporal } from 'temporal-polyfill'
+// namespace import too, so the -0 sweep enumerates the module instead of a list
+import * as dm from './index.js'
 import {
   addDays,
   addMonths,
@@ -303,6 +305,68 @@ describe('difference / compare', () => {
     for (const start of ['2026-01-31', '2026-01-30', '2024-02-29', '2026-03-31', '2026-08-06']) {
       for (let n = -24; n <= 24; n += 1) {
         assert.equal(differenceInMonths(addMonths(start, n), start), n, `${start} + ${n}`)
+      }
+    }
+  })
+
+  it('differenceInYears counts a clamped Feb 29 as arrival', () => {
+    // addYears('2024-02-29', 1) is '2025-02-28', so that has to count as a year
+    assert.equal(differenceInYears('2025-02-28', '2024-02-29'), 1)
+    assert.equal(differenceInYears('2024-02-29', '2025-02-28'), -1)
+    assert.equal(differenceInYears('2029-02-28', '2024-02-29'), 5)
+    // leap to leap needs no clamp
+    assert.equal(differenceInYears('2028-02-29', '2024-02-29'), 4)
+    // genuinely a day short is still not a full year
+    assert.equal(differenceInYears('2025-02-27', '2024-02-29'), 0)
+    assert.equal(differenceInCalendarYears('2025-02-27', '2024-02-29'), 1)
+  })
+
+  it('differenceInYears(addYears(d, n), d) === n', () => {
+    for (const start of ['2024-02-29', '2026-01-31', '2026-08-06', '2000-02-29', '1900-03-01']) {
+      for (let n = -12; n <= 12; n += 1) {
+        assert.equal(differenceInYears(addYears(start, n), start), n, `${start} + ${n}`)
+      }
+    }
+  })
+
+  it('differenceInYears agrees with trunc(differenceInMonths / 12)', () => {
+    for (const [a, b] of [
+      ['2025-02-28', '2024-02-29'],
+      ['2029-02-28', '2024-02-29'],
+      ['2026-01-15', '2024-11-15'],
+      ['2026-01-15', '2024-06-15'],
+      ['2024-02-29', '2029-02-28'],
+    ]) {
+      assert.equal(
+        differenceInYears(a, b),
+        Math.trunc(differenceInMonths(a, b) / 12),
+        `${a} vs ${b}`,
+      )
+    }
+  })
+
+  it('no numeric export returns -0', () => {
+    // enumerated from the module, not a hand-written list: hand-picked lists
+    // under-count, and this exact bug shipped twice because a five-case probe
+    // had no negative sub-week and no negative sub-quarter gap
+    const numeric = Object.keys(dm).filter(
+      (k) => typeof dm[k] === 'function' && /^(difference|compare)/.test(k),
+    )
+    assert.ok(numeric.length >= 10, `expected the whole family, got ${numeric.length}`)
+    // offsets that truncate toward zero from below: sub-week, sub-quarter, sub-year
+    for (const [a, b] of [
+      ['2026-01-15', '2026-01-16'],
+      ['2026-01-15', '2026-01-21'],
+      ['2026-01-01', '2026-02-01'],
+      ['2026-01-01', '2026-03-01'],
+      ['2026-01-01', '2026-11-01'],
+      ['2026-01-15', '2026-01-15'],
+    ]) {
+      for (const name of numeric) {
+        assert.ok(
+          !Object.is(dm[name](a, b), -0),
+          `${name}('${a}', '${b}') returned -0`,
+        )
       }
     }
   })

@@ -499,7 +499,9 @@ export function differenceInDays(dateLeft, dateRight) {
  * @returns {number}
  */
 export function differenceInWeeks(dateLeft, dateRight) {
-  return Math.trunc(differenceInDays(dateLeft, dateRight) / 7)
+  // `|| 0` normalises -0: Math.trunc keeps the sign of a negative gap shorter
+  // than a week, so a 1..6 day backwards difference returned -0
+  return Math.trunc(differenceInDays(dateLeft, dateRight) / 7) || 0
 }
 
 /**
@@ -545,7 +547,11 @@ export function differenceInCalendarMonths(dateLeft, dateRight) {
 }
 
 /**
- * Full years (signed).
+ * Full years (signed). Same rule as `differenceInMonths`: a year counts as full
+ * when `addYears` would carry the earlier date to the later one, so 29 February
+ * to 28 February of a common year is one year, because `addYears` clamps.
+ * That keeps `differenceInYears(addYears(d, n), d) === n`, and keeps this
+ * function agreeing with `trunc(differenceInMonths(a, b) / 12)`.
  * @param {DayInput} dateLeft
  * @param {DayInput} dateRight
  * @returns {number}
@@ -553,7 +559,22 @@ export function differenceInCalendarMonths(dateLeft, dateRight) {
 export function differenceInYears(dateLeft, dateRight) {
   const left = toPlainDate(dateLeft, 'dateLeft')
   const right = toPlainDate(dateRight, 'dateRight')
-  return left.since(right, { largestUnit: 'year' }).years
+  const sign = Temporal.PlainDate.compare(left, right)
+  if (sign === 0) return 0
+  const diff = Math.abs(left.year - right.year)
+  if (diff < 1) return 0
+  const [earlier, later] = sign > 0 ? [right, left] : [left, right]
+  // Where `earlier` lands after `diff` years: same year as `later`, same month,
+  // and the same day except that 29 February clamps to the 28th in a common
+  // year, which is the only day-of-month that changes length year to year.
+  // Compared field by field rather than built as a date, because the landing
+  // can sit past the maximum PlainDate even with both operands inside the range.
+  const landingDay =
+    earlier.month === 2 && earlier.day === 29 && !later.inLeapYear ? 28 : earlier.day
+  const isLastYearNotFull =
+    earlier.month > later.month ||
+    (earlier.month === later.month && landingDay > later.day)
+  return sign * (diff - +isLastYearNotFull) || 0
 }
 
 /**
@@ -573,7 +594,9 @@ export function differenceInCalendarYears(dateLeft, dateRight) {
  * @returns {number}
  */
 export function differenceInQuarters(dateLeft, dateRight) {
-  return Math.trunc(differenceInMonths(dateLeft, dateRight) / 3)
+  // `|| 0` normalises -0, same reason as differenceInWeeks: a backwards gap of
+  // one or two months truncates to -0
+  return Math.trunc(differenceInMonths(dateLeft, dateRight) / 3) || 0
 }
 
 /**

@@ -79,8 +79,9 @@ function* days() {
 // `status` separates the two kinds. SETTLED means the question is answered and
 // only a regression should move it. OPEN means daymath has not yet decided, and
 // the run prints it as OPEN so it does not scroll past looking like a pass.
-// The two setters are still OPEN; the two difference functions were settled in
-// 0.3.0 and now diverge only because of a date-fns bug.
+// The two setters are still OPEN; the three difference functions were settled in
+// 0.3.0 and now diverge only because of date-fns defects, one of which is fixed
+// upstream (months, PR #4283) and one of which is not (years).
 
 const KNOWN = {
   setDate: {
@@ -104,6 +105,15 @@ const KNOWN = {
     refute:
       'Run daymath against the patched source and expect exactly 0 — measured, 954,382 pairs, 0 mismatches. If that ever returns a non-zero count, the two libraries have diverged on semantics again and this entry is no longer just their bug. Second check: `differenceInMonths(addMonths(d, n), d) === n` holds in all 1,761,936 cases; if it stops, daymath changed, not them.',
   },
+  // Same defect class as differenceInMonths, but date-fns has NOT fixed this one.
+  // PR #4283 repaired months upstream and left years alone, so here daymath
+  // diverges from published and patched date-fns alike.
+  differenceInYears: {
+    status: 'SETTLED',
+    why: 'date-fns violates its own round-trip law here: addYears clamps 29 February to the 28th, but differenceInYears does not count that as arrival, so differenceInYears(addYears(d, n), d) !== n in 444 of 880,968 cases. daymath counts the clamped landing, matching its own addYears and keeping differenceInYears === trunc(differenceInMonths / 12). Same argument as date-fns/date-fns#4283, which fixed months upstream and left years untouched.',
+    refute:
+      'Measured on date-fns 4.4.0 itself, not inferred: 444 violations of differenceInYears(addYears(d, k), d) === k over 880,968 pairs, and 0 asymmetric pairs — so this is the round-trip defect, not the argument-order bug months had. Two checks that must keep holding on our side: differenceInYears(addYears(d, n), d) === n with 0 violations, and differenceInYears === trunc(differenceInMonths / 12), which was broken in 98 of 954,382 pairs before this change and is 0 after. If date-fns ever ships the same fix, this count drops to 0 and the STALE gate fires.',
+  },
   differenceInQuarters: {
     status: 'SETTLED',
     why: 'Derived from differenceInMonths (trunc /3), so it inherits the date-fns bug above and nothing else.',
@@ -115,8 +125,8 @@ const KNOWN = {
 // Expected divergence counts per range. Counts are only meaningful for a range
 // that has been measured, so an unlisted range asserts nothing and says so.
 const BASELINES = {
-  '1900-2100': { setDate: 39730, differenceInMonths: 1000, differenceInQuarters: 750, setYear: 196 },
-  '2020-2030': { setDate: 2166, differenceInMonths: 57, differenceInQuarters: 43, setYear: 12 },
+  '1900-2100': { setDate: 39730, differenceInMonths: 1000, differenceInQuarters: 750, setYear: 196, differenceInYears: 98 },
+  '2020-2030': { setDate: 2166, differenceInMonths: 57, differenceInQuarters: 43, setYear: 12, differenceInYears: 6 },
 }
 
 // ─── the comparison table ──────────────────────────────────────────
