@@ -345,6 +345,81 @@ describe('difference / compare', () => {
     }
   })
 
+  it('differenceInMonths is the floor of addMonths', () => {
+    // The property that defines the function: the largest n where
+    // addMonths(earlier, n) <= later. Everything else about the month rule
+    // follows from this plus whatever addMonths does, so this is the one to
+    // keep if the others are ever cut.
+    for (const earlier of ['2026-01-31', '2026-01-30', '2024-02-29', '2026-08-06', '2025-12-31']) {
+      for (let step = 1; step <= 400; step += 7) {
+        const later = addDays(earlier, step)
+        const k = differenceInMonths(later, earlier)
+        assert.ok(
+          compareAsc(addMonths(earlier, k), later) <= 0,
+          `addMonths(${earlier}, ${k}) overshoots ${later}`,
+        )
+        assert.ok(
+          compareAsc(addMonths(earlier, k + 1), later) > 0,
+          `addMonths(${earlier}, ${k + 1}) failed to overshoot ${later}`,
+        )
+      }
+    }
+  })
+
+  it('difference counts never decrease as the later date advances', () => {
+    for (const earlier of ['2026-01-31', '2024-02-29', '1900-11-30']) {
+      let prevM = null
+      let prevY = null
+      let later = earlier
+      for (let i = 0; i < 800; i += 1) {
+        later = addDays(later, 1)
+        const m = differenceInMonths(later, earlier)
+        const y = differenceInYears(later, earlier)
+        if (prevM !== null) assert.ok(m >= prevM, `months dropped at ${later}`)
+        if (prevY !== null) assert.ok(y >= prevY, `years dropped at ${later}`)
+        prevM = m
+        prevY = y
+      }
+    }
+  })
+
+  it('every difference function is antisymmetric', () => {
+    const pairs = [
+      ['2026-02-28', '2026-01-31'],
+      ['2024-02-29', '2025-02-28'],
+      ['2026-01-15', '2024-06-15'],
+      ['2026-01-15', '2026-01-16'],
+      ['1900-11-30', '1901-02-28'],
+    ]
+    const names = Object.keys(dm).filter(
+      (k) => typeof dm[k] === 'function' && k.startsWith('difference'),
+    )
+    for (const [a, b] of pairs) {
+      for (const name of names) {
+        // `|| 0` on the expected side only: negating a clean 0 yields -0, and
+        // assert.equal uses Object.is, so without it the assertion fails on the
+        // sign the functions deliberately do not produce
+        assert.equal(dm[name](a, b), -dm[name](b, a) || 0, `${name}('${a}', '${b}')`)
+      }
+    }
+  })
+
+  it('the derived difference functions match their definitions', () => {
+    for (const [a, b] of [
+      ['2026-02-28', '2026-01-31'],
+      ['2026-01-15', '2024-06-15'],
+      ['2024-02-29', '2029-02-28'],
+      ['2026-01-15', '2026-01-16'],
+    ]) {
+      // `|| 0` on the expected side: raw Math.trunc still yields -0 for a
+      // negative gap that truncates to zero, which is exactly what these
+      // functions were changed to stop returning
+      assert.equal(differenceInWeeks(a, b), Math.trunc(differenceInDays(a, b) / 7) || 0, `weeks ${a} ${b}`)
+      assert.equal(differenceInQuarters(a, b), Math.trunc(differenceInMonths(a, b) / 3) || 0, `quarters ${a} ${b}`)
+      assert.equal(differenceInYears(a, b), Math.trunc(differenceInMonths(a, b) / 12) || 0, `years ${a} ${b}`)
+    }
+  })
+
   it('no numeric export returns -0', () => {
     // enumerated from the module, not a hand-written list: hand-picked lists
     // under-count, and this exact bug shipped twice because a five-case probe
