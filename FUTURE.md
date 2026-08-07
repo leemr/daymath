@@ -69,7 +69,8 @@ Static `temporal-polyfill` class import still ships polyfill even when native Te
 ## Settled (do not re-litigate without new data)
 
 - date-fns-shaped **names**; values are ISO day **strings**, not `Date`  
-- `getMonth`/`setMonth` 0–11; `getDay` 0=Sunday; `weekStartsOn` default 0  
+- `getMonth`/`setMonth` **1–12** (ISO, 1=January); `getDay` **1=Mon…7=Sun** (ISO); `weekStartsOn` default `7`, `0` still accepted for Sunday — changed in 0.3.0, was date-fns 0-based  
+- `differenceInMonths` counts a month as full when `addMonths` would carry the earlier date to the later one, so the round-trip law holds — changed in 0.3.0, was Temporal `since`  
 - npm badge orange = shields style, not failure  
 - Sidebar “Packages” = GitHub Packages only; empty ≠ missing npmjs package  
 - GitHub Packages doc = `npm.pkg.github.com` + scoped names; not auto-publish to npmjs  

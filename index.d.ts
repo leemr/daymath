@@ -18,10 +18,12 @@ export type Interval = {
 }
 
 /**
- * Week options. `weekStartsOn`: 0 = Sunday … 6 = Saturday (date-fns default 0).
+ * Week options. `weekStartsOn`: ISO 1 = Monday … 7 = Sunday (default 7).
+ * `0` is also accepted for Sunday — 0 ≡ 7 (mod 7), so pre-0.3.0 callers keep
+ * working with no change in behaviour.
  */
 export type WeekOptions = {
-  weekStartsOn?: 0 | 1 | 2 | 3 | 4 | 5 | 6
+  weekStartsOn?: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7
 }
 
 /**
@@ -49,11 +51,11 @@ export function subQuarters(date: DayInput, amount: number): string
 
 /** Full year number. */
 export function getYear(date: DayInput): number
-/** Month index like Date/date-fns: 0 = January … 11 = December. */
+/** Month number, ISO 8601: 1 = January … 12 = December. Not date-fns's 0-based index. */
 export function getMonth(date: DayInput): number
 /** Day of month 1…31. */
 export function getDate(date: DayInput): number
-/** Weekday like Date/date-fns: 0 = Sunday … 6 = Saturday. */
+/** Weekday, ISO 8601: 1 = Monday … 7 = Sunday. Only Sunday differs from date-fns. */
 export function getDay(date: DayInput): number
 export function getDayOfYear(date: DayInput): number
 export function getDaysInMonth(date: DayInput): number
@@ -62,7 +64,7 @@ export function getQuarter(date: DayInput): number
 export function isLeapYear(date: DayInput): boolean
 
 export function setYear(date: DayInput, year: number): string
-/** `month`: 0 = January … 11 = December (date-fns). */
+/** `month`: 1 = January … 12 = December (ISO 8601). */
 export function setMonth(date: DayInput, month: number): string
 export function setDate(date: DayInput, dayOfMonth: number): string
 
