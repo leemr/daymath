@@ -27,6 +27,23 @@ export type WeekOptions = {
 }
 
 /**
+ * The calendar day of a moment, in a zone. The way in.
+ *
+ * Both defaults are stated: the moment is now, the zone is UTC. A number is
+ * read as epoch **milliseconds**, exactly as `new Date(n)` reads it. An ISO day
+ * string is already a day, so a zone does not apply to it. `'11/12/2026'` is
+ * refused, because nobody can tell November from December in it.
+ *
+ * A lone string is a zone unless it has the shape of an ISO day. No IANA zone
+ * has that shape, so the two roles cannot collide.
+ */
+export function day(tz?: string): string
+export function day(
+  moment: Date | number | DayInput | null | undefined,
+  tz?: string,
+): string
+
+/**
  * True for a valid daymath day string / PlainDate.
  * Invalid strings → false. `Date` → throws TypeError (not a quiet false).
  */
