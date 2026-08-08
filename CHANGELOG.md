@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+daymath claims to run everywhere. This makes that testable, and fixes what testing found.
+
+### Fixed
+
+- **A `Temporal.PlainDate` from another implementation is no longer rejected.** `toPlainDate` tested `value instanceof Temporal.PlainDate`, which recognises one class. A date from native Temporal, or from a second copy of `temporal-polyfill` in the same dependency tree, threw `TypeError: date must be ISO 8601 day string or Temporal.PlainDate` — and `isValid` answered `false` for a perfectly valid date. Every input now reduces to its ISO day string first, so daymath owns the instance it works with. The common source of one of these is `Temporal.Now.plainDateISO()`, since daymath has no `today()`.
+- **A non-interval argument now names the interval.** `eachDayOfInterval(new Date())`, `…([])` and `…(plainDate)` all reported `start must be ISO 8601 day string`, blaming a property the caller never passed, because the guard was a bare `typeof x === 'object'`. All six interval-reading exports now say `interval must be { start, end }`.
+
+### Changed
+
+- **Error messages no longer quote Temporal's own text.** `daymath: addDays could not produce a valid date (Out-of-bounds date)` becomes `daymath: addDays could not produce a valid date`. Implementations word the same failure differently — native V8 says `Temporal error: epoch days exceed maximum range.` — so the quoted text made daymath's message vary by runtime. The original error is still on `cause`. It was the only remaining difference across implementations, in 612 calls of a 46,512-call sweep at the time. It is now 0.
+- **A non-ISO calendar is refused rather than reinterpreted.** `2026-01-31[u-ca=buddhist]` is the same day as `2026-01-31`, but Thai Buddhist years run 543 ahead, so it is year 2569. Accepting it would make `getYear` answer `2026` where the caller's own object says `2569`. Calendars like `hebrew` and `chinese` renumber the month and day as well. Strings carrying an annotation were already refused; objects now match. A caller who means the ISO day can convert deliberately with `withCalendar('iso8601')`.
+- `engines` stays at `>=18`. The real constraint is `require()`, which needs Node 20.19+ or 22.12+ via `require(esm)`, and is now stated in the README rather than mis-encoded as an ESM floor.
+
+### Added
+
+- **`day(moment?, tz?)`** — the way in. It answers the calendar day of a moment, in a zone.
+
+  ```js
+  day()                                  // '2026-08-08'  now, UTC
+  day('Asia/Tokyo')                      // now, named zone
+  day(row.createdAt)                     // a Date, UTC
+  day(row.createdAt, 'America/New_York') // same instant, the evening before
+  day(1761616161771)                     // epoch milliseconds
+  day('2026-05-05')                      // already a day
+  ```
+
+  Both defaults are stated rather than assumed: the moment is now, the zone is UTC. A number is epoch **milliseconds**, exactly as `new Date(n)` reads it, truncated the same way, so a fractional value is not an error. A day carries no time, so a zone does not apply to one — but the zone is still validated, so a typo fails whatever the moment is. `'11/12/2026'` is refused, because nobody can tell November from December in it. A lone string is a zone unless it has the shape of an ISO day, which is unambiguous — none of the 418 IANA zones this runtime knows even contains a digit.
+
+  This is the only export that reads a clock, and the only door a `Date` may enter by. Nothing carries a zone past it, and nothing returns a `Date`. Give it a moment and it is a pure function, which is how the cross-runtime battery covers it.
+
+  Two things it deliberately does not do. It does not guess whether a number is seconds or milliseconds: 13 digits means milliseconds for 2001–2286 and seconds for the year 275760, and both are inside the supported range, so no digit or magnitude rule can separate them. It does not default the zone to the system zone, because that answer changes by region.
+
+- **`npm run test:runtimes`** — a cross-runtime baseline over every export, hashed per export. The call count lives in `scripts/cross-runtime.baseline.json` rather than in prose, so it cannot go stale. CI runs it on Node 18–26, on **Deno**, which ships native Temporal, and on **Bun**. It is the only check that can see the polyfill and the standard disagree.
+- Tests for each fix, including a law that a foreign `PlainDate` must be indistinguishable from its ISO day string across every export, enumerated from the module rather than a hand-written list.
+- A bundle-size badge.
+
+### Removed
+
+- `globalThis.Temporal ?? TemporalPolyfill`. `temporal-polyfill` already resolves native itself, so this duplicated the check and hid where it happens.
+
 ## [0.3.0] — 2026-08-07
 
 Index bases and the unit counts change, so this release is `0.3.0`. It also carries

@@ -2,7 +2,7 @@
 
 Checked-in backlog. Not a promise of order. Session handoff: local `todo.grok` (gitignored).
 
-**Live now:** `daymath@0.2.3` on npmjs · `@leemr/daymath@0.2.3` on GitHub Packages · https://leemr.github.io/daymath/
+**Live now:** `daymath@0.3.0` on npmjs · `@leemr/daymath@0.3.0` on GitHub Packages · https://leemr.github.io/daymath/
 
 ---
 
@@ -41,8 +41,18 @@ Checked-in backlog. Not a promise of order. Session handoff: local `todo.grok` (
 
 Static `temporal-polyfill` class import still ships polyfill even when native Temporal exists.
 
-- Dynamic import / optional peer for native Temporal  
-- Or `temporal-polyfill/fns/PlainDate` if fidelity + size hold  
+- ~~Dynamic import / optional peer for native Temporal~~ — **measured, dead end.** The polyfill still ships in a lazy chunk, and it forces the whole API async.
+- **`temporal-polyfill/fns/PlainDate`** is the live option. Measured with esbuild 0.28.1, minified, ESM, browser, on a three-call program:
+
+  | shape | min | gzip |
+  |---|---|---|
+  | class API (today) | 56,448 B | 19,806 B |
+  | fns, string out | 16,814 B | **6,423 B** |
+  | fns, but returning a real `PlainDate` | 59,994 B | 20,791 B |
+
+  Returning a `PlainDate` costs the whole saving and more, because `fns.toTemporal` builds with a free `Temporal` global and throws without native support, so the class API comes back in. Returning strings is what keeps this option open.
+- `day()` now uses `Temporal.Instant` and `ZonedDateTime`. That is free today and will add bytes to a fns port. **Not yet measured.**
+- Absolute byte counts do not transfer between experiments; only an A/B inside one does.
 - Measure in a real app (e.g. itrvl) before rewriting  
 
 ---

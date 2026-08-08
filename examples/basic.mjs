@@ -3,6 +3,7 @@
  *   node examples/basic.mjs
  */
 import {
+  day,
   addDays,
   addMonths,
   differenceInDays,
@@ -11,6 +12,17 @@ import {
   startOfMonth,
   eachDayOfInterval,
 } from '../index.js'
+
+// day() is the way in. Both defaults are stated: now, and UTC.
+console.log('day()', day())
+console.log('day(zone)', day('Asia/Tokyo'))
+console.log('addDays(day(), 2)', addDays(day(), 2))
+
+// A Date only enters here, and only with a zone you name or the stated default.
+const instant = new Date('2026-08-07T02:30:00Z') // 22:30 the day before in New York
+console.log('day(Date)', day(instant))
+console.log('day(Date, zone)', day(instant, 'America/New_York'))
+console.log('day(epoch ms)', day(1761616161771))
 
 console.log('addDays', addDays('2026-08-06', 1))
 console.log('addMonths (constrain)', addMonths('2026-01-31', 1))
