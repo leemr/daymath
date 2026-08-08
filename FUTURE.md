@@ -13,14 +13,16 @@ Checked-in backlog. Not a promise of order. Session handoff: local `todo.grok` (
 - **`enforce_admins: true`** on branch protection if even owner merges must wait for CI (today: admin can bypass).
 - **OpenSSF Scorecard** badge when you want the scoreboard.
 - **Rotate Codecov token** if it was ever pasted into chat; keep only as `CODECOV_TOKEN` secret.
-- **CodeQL / code scanning** — optional; not set up.
 - **Dependabot malware alerts** — optional UI toggle; version + security Dependabot already on.
 
 **Done (trust / CI / registries):**
 
 - SECURITY.md, CONTRIBUTING.md, CHANGELOG, GitHub Releases through v0.2.3  
-- CI Node 18–26; checkout/setup-node v7; c8 100% lines/funcs/branches; Codecov upload + badge (~100% on master)  
-- Master protected: required Node checks, strict, no force-push/delete; fork+PR open  
+- CI Node 20–26 (18 dropped, end-of-life April 2025); checkout/setup-node v7; c8 100% lines/funcs/branches; Codecov upload + badge (~100% on master)  
+- Cross-runtime baseline on **Deno** (native Temporal) and **Bun**: `npm run test:runtimes`  
+- Static gates, all on Node 26 only: `lint` (oxlint), `format:check` (oxfmt), `typecheck` (tsc over the JSDoc in `index.js` and over `index.d.ts`)  
+- **CodeQL default setup**: configured, weekly, languages actions + javascript + javascript-typescript + typescript. It reports `Analyze (…)` checks, left **not required** — a default-setup run cannot be re-run, so a transient outage would be a permanent red  
+- Master protected: strict, no force-push/delete, fork+PR open. Required contexts are **`Node 20` `Node 22` `Node 24` `Node 26` `deno` `bun`**, all pinned to the GitHub Actions app (id 15368). This list lives in the **repository setting**, not in `ci.yml` — dropping a matrix entry without editing it blocks every later PR on a check that can never report  
 - Dependabot **version** updates (`.github/dependabot.yml`); **alerts** + **security updates** + **grouped** + private vuln reporting + dependency graph (UI); secret scanning + push protection  
 - Automatic dependency submission: **left Disabled** (npm lockfile is enough)  
 - GitHub Packages: `scripts/publish-github-packages.mjs` + workflow (on release and workflow_dispatch). Don’t double-fire same version (second publish fails red; ignore).  
@@ -61,7 +63,7 @@ Static `temporal-polyfill` class import still ships polyfill even when native Te
 
 - Business days, ISO week suite  
 - Rich display / i18n — **out of scope** (Temporal+Intl or date-fns TZ formatters)  
-- Next **semver:** patch for tooling; **0.3.0** only for API surface  
+- Next **semver: 0.4.0.** `day()` is new API surface, and the Node floor moved to 20.19  
 
 **Done:** 0.2 calendar surface; expanded ISO years; `isValid(Date)` throws; `isSameDay` = `isEqual`; date-fns index traps (0-based month, Sunday week, etc.)
 
@@ -72,7 +74,7 @@ Static `temporal-polyfill` class import still ships polyfill even when native Te
 - Deeper `@example` JSDoc on hot exports  
 - Micro-bench only if honest and useful  
 
-**Done:** `examples/basic.mjs`, types, playground, 100% coverage  
+**Done:** `examples/basic.mjs`, types, playground, 100% coverage, lint + format + type gates  
 
 ---
 
