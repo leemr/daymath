@@ -21,6 +21,8 @@
     "test:coverage": "c8 --include=index.js --check-coverage --lines 100 --functions 100 --branches 100 --reporter=text --reporter=lcov node --test test.js",
     "test:differential": "node scripts/differential.mjs",
     "test:differential:quick": "node scripts/differential.mjs 2020 2030",
+    "test:runtimes": "node scripts/cross-runtime.mjs",
+    "test:runtimes:write": "node scripts/cross-runtime.mjs --write",
     "prepublishOnly": "npm run test:coverage",
     "publish:github": "node scripts/publish-github-packages.mjs"
   },

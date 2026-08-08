@@ -5,3 +5,4 @@ todo
 todo.grok
 *.swp
 coverage/
+deno.lock
