@@ -61,6 +61,47 @@ Static `temporal-polyfill` class import still ships polyfill even when native Te
 
 ## API / product (optional)
 
+- **Accept `buddhist` and `roc` calendars** — next PR. daymath refuses every non-ISO calendar
+  today. That is correct as a default, because normalising to ISO would answer `2026` where the
+  caller's own object says `2569`. But the refusal is wider than it needs to be.
+
+  The line is measurable at runtime, not a list to maintain: **accept a calendar when its month
+  and day already equal the ISO fields.** Compare `d.month`/`d.day` against
+  `d.withCalendar('iso8601')`. Measured on `2026-01-31` with `temporal-polyfill/full`:
+
+  | calendar | year | month | day | ISO month+day match |
+  |---|---|---|---|---|
+  | `buddhist` | 2569 | 1 | 31 | **yes** (+543) |
+  | `roc` | 115 | 1 | 31 | **yes** (−1911) |
+  | `japanese` | 2026 | 1 | 31 | **yes**, but era-based |
+  | `hebrew` | 5786 | 5 | 13 | no |
+  | `chinese` | 2025 | 13 | 13 | no, 13 months |
+  | `persian` | 1404 | 11 | 11 | no |
+  | `coptic` | 1742 | 5 | 23 | no, 13 months |
+  | `ethiopic` | 2018 | 5 | 23 | no, 13 months |
+  | `indian` | 1947 | 11 | 11 | no |
+
+  For the matching family only the year label moves, so every export still works honestly.
+  daymath returns strings, so the annotation rides along and nothing is lost:
+
+  ```js
+  getYear('2026-01-31[u-ca=buddhist]')        // 2569, not 2026
+  addDays('2026-01-31[u-ca=buddhist]', 1)     // '2026-02-01[u-ca=buddhist]'
+  setYear('2026-01-31[u-ca=buddhist]', 2570)  // '2027-01-31[u-ca=buddhist]'
+  ```
+
+  The renumbering family cannot work this way: `addMonths` has no meaning when a year holds 13
+  months and month lengths do not line up with ISO.
+
+  Two questions the PR must still answer:
+
+  1. **`japanese` is era-based.** `.year` reads 2026 but `.eraYear` reads 8 for Reiwa 8. A
+     year-offset rule does not describe it, so it may need its own decision.
+  2. **The object / string asymmetry belongs to Temporal.** A string's date part is always ISO;
+     an object's fields are calendar fields, so `from({year: 2026, …, calendar: 'buddhist'})` is
+     ISO 1483. Taking annotated strings inherits that rule and stays consistent with Temporal.
+     daymath cannot fix it.
+
 - Business days, ISO week suite  
 - Rich display / i18n — **out of scope** (Temporal+Intl or date-fns TZ formatters)  
 - Next **semver: 0.4.0.** `day()` is new API surface, and the Node floor moved to 20.19  

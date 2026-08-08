@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  // Not a dotfile on purpose. The npm scripts pass -c oxlint.json.
+  // Not a dotfile on purpose. The npm scripts pass -c oxlint.jsonc.
   "categories": {
     "correctness": "error",
     "suspicious": "error",
@@ -23,7 +23,6 @@
         "prefer-single-call": "off",
         "no-negated-condition": "off",
         "unicorn/no-negated-condition": "off",
-        "explicit-length-check": "off",
         "consistent-function-scoping": "off",
         "max-depth": "off",
         "no-shadow": "off"

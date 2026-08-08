@@ -110,6 +110,32 @@ const MOMENTS = [
   Infinity,
 ]
 
+// Malformed strings. Every export throws on every entry, except `isValid`,
+// which answers `false` by contract. `outcome` records the error class and the
+// message, so a throw that changes wording, or stops happening, moves the hash.
+//
+// This list exists because MOMENTS held only Date objects and numbers, so no
+// probe ever passed a bad *string*. That gap let day() read an ISO timestamp
+// as a time zone and answer today, silently, on every runtime.
+const JUNK = [
+  '', // empty
+  '11/12/2026', // November or December, unknowable
+  '2026-08-08 12:00:00', // SQL DATETIME: a space, not a T
+  '2026-08-08T12:00', // a time, but no offset, so no instant
+  '2026-08-08T12:00:00', // the same, with seconds
+  '12:30:00', // a time alone
+  '2026-08-08T25:00:00Z', // hour 25
+  '2026-13-01', // month 13
+  '2026-02-30', // a day that does not exist
+  '1999-06-06[Asia/Tokyo]', // a day wearing a zone annotation
+  '2026-W32-5', // ISO week date, which daymath does not read
+  '2026/08/08', // slashes
+  '-2026-08-08', // a four-digit year may not carry a sign
+  '2026-01-31[u-ca=buddhist]', // a real calendar annotation, refused
+  '2026-01-31[!u-ca=buddhist]', // the critical spelling of it
+  '[u-ca=[u-ca=[u-ca=x]]]', // bracket soup: probes the annotation regex alone
+]
+
 /**
  * @param dm the daymath module
  * @param PlainDate the runtime's `Temporal.PlainDate` — native where there is
@@ -166,6 +192,16 @@ export function run(dm, PlainDate) {
       rows.push(
         outcome(() => fn(m, 'Asia/Tokyo')),
         outcome(() => fn(m, 'America/New_York')),
+      )
+    }
+    for (const j of JUNK) {
+      rows.push(
+        outcome(() => fn(j)),
+        outcome(() => fn(j, 'utc')),
+      )
+      rows.push(
+        outcome(() => fn('2026-08-06', j)),
+        outcome(() => fn({ start: j, end: '2026-08-06' })),
       )
     }
     for (const pd of asObjects) {

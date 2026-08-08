@@ -9,7 +9,7 @@
 
 **ISO 8601** calendar day math. **date-fns-shaped** names. **Temporal.PlainDate** under the hood.
 
-No `Date`. No time zones. No silent “local now.” ISO 8601 ❤️
+No `Date`. No time zones. No silent “local now”. ISO 8601 ❤️
 
 [**Play →**](https://leemr.github.io/daymath/) · [npm](https://www.npmjs.com/package/daymath) · [Changelog](./CHANGELOG.md) · [Contributing](./CONTRIBUTING.md) · [FUTURE](./FUTURE.md)
 
@@ -39,22 +39,36 @@ isSameDay('2026-08-06', '2026-08-06')        // true
 `day` is the way in. It turns a moment into a day, and it is the only function
 that reads a clock.
 
+Start here. No arguments means today, in UTC.
+
 ```js
-day()                                 // '2026-08-08'  now, UTC
-day('Asia/Tokyo')                     // '2026-08-08'  now, named zone
-day(row.createdAt)                    // '2026-08-07'  a Date, UTC
-day(row.createdAt, 'America/New_York')// '2026-08-06'  same instant, evening before
-day(1761616161771)                    // '2025-10-28'  epoch milliseconds
-day('2026-05-05')                     // '2026-05-05'  already a day
-addDays(day(), 2)                     // '2026-08-10'
+day()                                  // '2026-08-08'
+addDays(day(), 2)                      // '2026-08-10'
 ```
 
-Both defaults are **stated**, not assumed: the moment is now, and the zone is UTC.
+Then hand it whatever you already have. It converts; it never stores what you gave it.
+
+```js
+day(row.createdAt)                     // '2026-08-07'  a Date
+day(1761616161771)                     // '2025-10-28'  epoch milliseconds
+day('1999-01-01T00:00:00Z')            // '1999-01-01'  an ISO timestamp
+day('2026-05-05')                      // '2026-05-05'  already a day
+```
+
+Name a zone when the answer depends on one.
+
+```js
+day('Asia/Tokyo')                      // '2026-08-09'  today in Tokyo
+day(row.createdAt, 'America/New_York') // '2026-08-06'  the evening before
+day('2026-08-08T23:00:00Z', 'Asia/Tokyo') // '2026-08-09'  same instant, next day
+```
+
+Both defaults are **stated**, not assumed.
 UTC is still not your day for part of every day — it runs ahead of `America/New_York`
 for 16.7% of the day, and behind `Asia/Tokyo` for 37.5% — so name your zone when
 that matters.
 
-Three rules worth knowing:
+Four rules worth knowing:
 
 - A **number is epoch milliseconds**, exactly as `new Date(n)` reads it. A seconds
   timestamp read as milliseconds lands in 1970, with no error. daymath states the
@@ -63,7 +77,17 @@ Three rules worth knowing:
   inside the supported range.
 - A **day carries no time**, so a zone does not apply to one.
   `day('2026-05-05', 'Asia/Tokyo')` is `'2026-05-05'`.
+- A **timestamp carrying `Z` or an offset** names an exact instant, so it is read
+  as a moment. One carrying neither is refused: `'2026-08-08T12:00'` names no
+  instant, and daymath will not pick a zone for you.
 - **`'11/12/2026'` is refused.** Nobody can tell November from December in it.
+
+A lone string takes one of three roles, decided in this order: a day, an instant,
+then a zone. The zone test is by **shape** — an IANA name starts with a letter, or
+the string is a bare offset such as `+05:30`. Temporal's own zone grammar cannot
+decide the role: it accepts a whole timestamp and reads the zone out of it, so
+`day('1999-01-01T00:00:00Z')` would answer today. That grammar also differs
+between implementations, which would make the answer depend on the runtime.
 
 ```bash
 node examples/basic.mjs   # from a clone
@@ -154,11 +178,26 @@ Temporal.PlainDate.from({year: 2026, month: 1, day: 31,
 543 years apart. The date part of a string is always ISO; the annotation changes how fields are
 *read*, never how the string *parses*. daymath could strip the annotation and answer
 `2026-01-31`, which is the right day — but `getYear` would then return `2026` where your own
-object says `2569`. So it throws, and you convert deliberately:
+object says `2569`. So it throws, naming the calendar and the way out:
 
 ```js
+getYear(buddhistDate)
+// RangeError: daymath: date must use the ISO 8601 calendar, not "buddhist"
+//             (convert with withCalendar('iso8601'))
+
 format(buddhistDate.withCalendar('iso8601'))   // '2026-01-31'
 ```
+
+`[u-ca=iso8601]` is the one annotation daymath accepts, and it drops it. Temporal writes it
+itself for `toString({ calendarName: 'always' })`, and it names the very calendar daymath
+reads, so refusing your own round-trip would be arbitrary.
+
+```js
+const written = plainDate.toString({ calendarName: 'always' })  // '2026-01-31[u-ca=iso8601]'
+getYear(written)                                                // 2026
+```
+
+Accepting `buddhist` and `roc` is planned; see `FUTURE.md` for the rule that would allow it.
 
 Error messages quote no Temporal text, because implementations word the same failure
 differently. The original error is on `cause`.

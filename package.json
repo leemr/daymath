@@ -1,7 +1,7 @@
 {
   "name": "daymath",
   "version": "0.3.0",
-  "description": "Calendar date math (ISO 8601 day / PlainDate). date-fns-shaped. No time zones.",
+  "description": "Calendar date math (ISO 8601 day / PlainDate). date-fns-shaped. No Date. No time zones.",
   "type": "module",
   "main": "./index.js",
   "types": "./index.d.ts",
@@ -34,12 +34,13 @@
   "keywords": [
     "date",
     "calendar",
+    "civil-date",
     "plain-date",
-    "temporal",
-    "date-fns",
     "YYYY-MM-DD",
     "ISO-8601",
-    "PlainDate"
+    "Temporal",
+    "PlainDate",
+    "date-fns"
   ],
   "author": "leemr",
   "license": "MIT",

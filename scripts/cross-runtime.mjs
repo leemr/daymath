@@ -28,8 +28,8 @@ const BASELINE = fileURLToPath(new URL('./cross-runtime.baseline.json', import.m
 const write = process.argv.includes('--write')
 const verbose = process.argv.includes('--verbose')
 
-// oxlint-disable-next-line no-negated-condition -- the autofix inverts this into
-// a nested ternary that reads far worse than the flat chain.
+// The scripts/** override turns off no-negated-condition. Its autofix inverts
+// this into a nested ternary that reads far worse than the flat chain.
 const runtime =
   typeof Deno !== 'undefined'
     ? `Deno ${Deno.version.deno}`
@@ -55,10 +55,7 @@ console.log(`daymath cross-runtime — ${runtime}, ${temporal}`)
 console.log(`${names.length} exports, ${calls} calls\n`)
 
 if (write) {
-  writeFileSync(
-    BASELINE,
-    `${JSON.stringify({ exports: names.length, calls, hashes }, null, 2)}\n`,
-  )
+  writeFileSync(BASELINE, `${JSON.stringify({ calls, hashes }, null, 2)}\n`)
   console.log(`WROTE ${BASELINE}`)
   console.log(
     'Recorded on this runtime. Re-record only when behaviour changes on purpose.',
@@ -66,7 +63,7 @@ if (write) {
   process.exit(0)
 }
 
-/** @type {{exports: number, calls: number, hashes: Record<string, string>}} */
+/** @type {{calls: number, hashes: Record<string, string>}} */
 let baseline
 try {
   baseline = JSON.parse(readFileSync(BASELINE, 'utf8'))

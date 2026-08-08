@@ -132,7 +132,8 @@ describe('day() — the one export that reads a clock', () => {
   })
 
   it('throws with the daymath contract on an unknown zone', () => {
-    for (const bad of ['nope', 'Mars/Olympus', '05/05/2026']) {
+    // Zone-shaped, so the string takes the zone role and Temporal refuses it.
+    for (const bad of ['nope', 'Mars/Olympus', 'Etc/Nowhere']) {
       assert.throws(
         () => dm.day(bad),
         (err) => {
@@ -199,8 +200,6 @@ describe('day() — the one export that reads a clock', () => {
     assert.equal(dm.day('2026-05-05', null), '2026-05-05')
     assert.equal(dm.day(new Date(0), null), '1970-01-01')
     assert.equal(dm.day('Asia/Tokyo', null), dm.day('Asia/Tokyo'))
-    // Two real zones is still a shape mistake.
-    assert.throws(() => dm.day('utc', 'Asia/Tokyo'), /two time zones/)
   })
 
   it('treats a day as already a day, so no zone applies', () => {
@@ -214,9 +213,60 @@ describe('day() — the one export that reads a clock', () => {
     assert.equal(dm.day(Other.PlainDate.from('2026-05-05'), 'Asia/Tokyo'), '2026-05-05')
   })
 
+  it('reads a timestamp that names an exact instant', () => {
+    // Z or an offset fixes the instant, so there is nothing left to guess.
+    assert.equal(dm.day('1999-01-01T00:00:00Z'), '1999-01-01')
+    assert.equal(dm.day('1970-01-01T00:00:00Z'), '1970-01-01')
+    assert.equal(dm.day('1999-01-01T00:00:00.000Z'), '1999-01-01')
+    assert.equal(dm.day('20260808T120000Z'), '2026-08-08') // the compact spelling
+    // 21:00 in Tokyo is 12:00 UTC, so UTC and Tokyo name different days.
+    assert.equal(dm.day('2026-08-08T21:00:00+09:00'), '2026-08-08')
+    assert.equal(dm.day('2026-08-08T21:00:00+09:00', 'Asia/Tokyo'), '2026-08-08')
+    assert.equal(dm.day('2026-08-08T23:00:00Z', 'Asia/Tokyo'), '2026-08-09')
+    // The zone slot is checked by shape too, and for the same reason: hour 25
+    // is a time zone to temporal-polyfill and not one to native Temporal, so
+    // letting the implementation decide made the answer depend on the runtime.
+    for (const bad of ['2026-08-08T25:00:00Z', '1999-01-01T00:00:00Z', '11/12/2026']) {
+      assert.throws(() => dm.day('2026-05-05', bad), {
+        name: 'RangeError',
+        message: `daymath: day() got an unknown time zone ${JSON.stringify(bad)}`,
+      })
+    }
+    // A zone is still a zone, and an offset spelling of one still works.
+    assert.equal(dm.day('Asia/Tokyo'), dm.day(undefined, 'Asia/Tokyo'))
+    assert.equal(dm.day('+05:30'), dm.day(undefined, '+05:30'))
+    assert.equal(dm.day('+0530'), dm.day(undefined, '+0530'))
+  })
+
+  it('refuses a string that is neither a moment nor a zone', () => {
+    // Temporal's zone grammar accepts a whole timestamp and pulls the zone out
+    // of it. Letting it pick the role read a date as a zone and answered today.
+    for (const bad of [
+      '11/12/2026', // nobody can tell November from December in this
+      '05/05/2026',
+      '2026-08-08T12:00', // no offset, so it names no instant
+      '1999-06-06[Asia/Tokyo]',
+      '2026-01-01[America/New_York]',
+      '2026-W32-5',
+      '12:30:00',
+      '2026-08-08T25:00:00Z', // hour 25
+    ]) {
+      assert.throws(
+        () => dm.day(bad),
+        (err) => {
+          assert.ok(err instanceof RangeError)
+          assert.equal(
+            err.message,
+            `daymath: day() got ${JSON.stringify(bad)}, which is neither a moment nor a time zone`,
+          )
+          return true
+        },
+        `day(${JSON.stringify(bad)}) must not answer`,
+      )
+    }
+  })
+
   it('refuses an ambiguous or unusable moment', () => {
-    // Nobody can tell November from December in this.
-    assert.throws(() => dm.day('11/12/2026'), /unknown time zone/)
     assert.throws(
       () => dm.day(new Date('garbage')),
       (err) => {
@@ -275,12 +325,9 @@ describe('day() — the one export that reads a clock', () => {
 
   it('null and undefined mean "now", and a zone in slot two still counts', () => {
     const before = utcDayNow()
-    const [bare, nul, undef] = [dm.day(), dm.day(null), dm.day()]
+    const [bare, nul] = [dm.day(), dm.day(null)]
     const after = utcDayNow()
-    if (before === after) {
-      assert.equal(nul, bare)
-      assert.equal(undef, bare)
-    }
+    if (before === after) assert.equal(nul, bare)
     // day(undefined, tz) must honour the zone rather than drop it.
     const tokyo = dm.day(undefined, 'Asia/Tokyo')
     assert.equal(tokyo, dm.day('Asia/Tokyo'))
@@ -385,6 +432,27 @@ describe('a PlainDate from another Temporal implementation', () => {
     assert.equal(hebrew.month, 5) // control: Hebrew names this month 5
     assert.throws(() => format(hebrew), /ISO 8601/)
     assert.throws(() => dm.getMonth(hebrew), /ISO 8601/) // would have said 1
+
+    // The error names the calendar and the way out, not a malformed string.
+    assert.throws(() => dm.getYear(buddhist), {
+      name: 'RangeError',
+      message:
+        'daymath: date must use the ISO 8601 calendar, not "buddhist" (convert with withCalendar(\'iso8601\'))',
+    })
+    assert.throws(() => dm.getMonth(hebrew), /not "hebrew"/)
+    // The critical form of the annotation is refused the same way.
+    assert.throws(() => parse('2026-01-31[!u-ca=buddhist]'), /not "buddhist"/)
+
+    // But `[u-ca=iso8601]` is the caller's own round-trip, so it is accepted
+    // and dropped. Temporal writes it for toString({calendarName:'always'}).
+    const written = Temporal.PlainDate.from(iso).toString({ calendarName: 'always' })
+    assert.equal(written, '2026-01-31[u-ca=iso8601]') // control: Temporal wrote it
+    assert.equal(format(written), iso)
+    assert.equal(dm.getYear(written), 2026)
+    assert.equal(format('2026-01-31[!u-ca=iso8601]'), iso) // the critical spelling
+    assert.equal(format('+002026-01-31[u-ca=iso8601]'), iso) // and the expanded year
+    // An impossible day inside a valid annotation still fails as a day.
+    assert.throws(() => parse('2026-02-30[u-ca=iso8601]'), /invalid date/)
 
     // withCalendar is the deliberate way through, and daymath takes the result.
     assert.equal(format(buddhist.withCalendar('iso8601')), iso)

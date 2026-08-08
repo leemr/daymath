@@ -64,8 +64,8 @@ function* days() {
   end.setFullYear(TO, 11, 31)
   const cur = new Date(2000, 0, 1, 12)
   cur.setFullYear(FROM, 0, 1)
-  // oxlint-disable-next-line no-unmodified-loop-condition -- cur is mutated by
-  // setDate below, not reassigned, which the rule cannot see.
+  // The scripts/** override turns off no-unmodified-loop-condition. `cur` is
+  // mutated by setDate below, not reassigned, which the rule cannot see.
   while (cur <= end) {
     yield fromDate(cur)
     cur.setDate(cur.getDate() + 1)
