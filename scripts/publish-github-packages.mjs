@@ -8,10 +8,9 @@
  */
 import { readFileSync, writeFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
-import { fileURLToPath } from 'node:url'
-import { dirname, join } from 'node:path'
+import { join } from 'node:path'
 
-const root = join(dirname(fileURLToPath(import.meta.url)), '..')
+const root = join(import.meta.dirname, '..')
 const pkgPath = join(root, 'package.json')
 const original = readFileSync(pkgPath, 'utf8')
 const dry = process.argv.includes('--dry-run')

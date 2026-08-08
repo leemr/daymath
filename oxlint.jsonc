@@ -1,0 +1,43 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  // Not a dotfile on purpose. The npm scripts pass -c oxlint.json.
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error",
+    "perf": "error",
+    "pedantic": "error"
+  },
+  "env": { "builtin": true, "es2024": true },
+  "ignorePatterns": ["coverage", "node_modules"],
+  "rules": {
+    "no-inline-comments": "off",
+    "max-lines": "off",
+    "max-lines-per-function": "off"
+  },
+  "overrides": [
+    {
+      // Tests and harnesses are read by us, not shipped. They keep the rules that find bugs and drop the ones that only shape prose.
+      "files": ["test.js", "scripts/**"],
+      "rules": {
+        "require-unicode-regexp": "off",
+        "prefer-single-call": "off",
+        "no-negated-condition": "off",
+        "unicorn/no-negated-condition": "off",
+        "explicit-length-check": "off",
+        "consistent-function-scoping": "off",
+        "max-depth": "off",
+        "no-shadow": "off"
+      }
+    },
+    {
+      // FNV-1a steps by one index, so charCodeAt is correct and codePointAt would re-read a low surrogate.
+      "files": ["scripts/battery.mjs"],
+      "rules": { "prefer-code-point": "off" }
+    },
+    {
+      // cur is a Date mutated by setDate, not reassigned; the rule cannot see that.
+      "files": ["scripts/differential.mjs"],
+      "rules": { "no-unmodified-loop-condition": "off" }
+    }
+  ]
+}

@@ -10,13 +10,37 @@
 // range makes the walkers allocate ~99 million day strings and the run dies of
 // heap exhaustion, which measures the battery, not daymath.
 
+// oxfmt-ignore -- a data table reads better in columns than one per line
 const DATES = [
-  '2026-01-31', '2026-02-28', '2024-02-29', '2000-02-29', '1900-03-01',
-  '2026-12-31', '2026-01-01', '2026-06-15', '2026-08-06', '2023-02-28',
-  '2026-04-30', '2026-05-31', '2026-11-30', '2100-02-28', '2400-02-29',
-  '0001-01-01', '0000-01-01', '-000001-12-31', '9999-12-31', '+010000-01-01',
-  '-271821-04-19', '+275760-09-13', '+275760-09-12', '-271821-04-20',
-  '1970-01-01', '1969-12-31', '2026-03-01', '2026-09-30', '2026-07-04',
+  '2026-01-31',
+  '2026-02-28',
+  '2024-02-29',
+  '2000-02-29',
+  '1900-03-01',
+  '2026-12-31',
+  '2026-01-01',
+  '2026-06-15',
+  '2026-08-06',
+  '2023-02-28',
+  '2026-04-30',
+  '2026-05-31',
+  '2026-11-30',
+  '2100-02-28',
+  '2400-02-29',
+  '0001-01-01',
+  '0000-01-01',
+  '-000001-12-31',
+  '9999-12-31',
+  '+010000-01-01',
+  '-271821-04-19',
+  '+275760-09-13',
+  '+275760-09-12',
+  '-271821-04-20',
+  '1970-01-01',
+  '1969-12-31',
+  '2026-03-01',
+  '2026-09-30',
+  '2026-07-04',
   '1582-10-15',
 ]
 
@@ -58,6 +82,9 @@ function outcome(fn) {
 export function hash(s) {
   let h = 0x811c9dc5
   for (let i = 0; i < s.length; i++) {
+    // charCodeAt, not codePointAt: this loop steps by one, so a code point
+    // would consume an astral pair and then read its low surrogate again.
+    // oxlint --fix made that swap once; the rule is off for this file.
     h ^= s.charCodeAt(i)
     h = Math.imul(h, 0x01000193) >>> 0
   }
@@ -97,38 +124,59 @@ export function run(dm, PlainDate) {
     // as a pass.
     throw new TypeError('battery: run(dm, PlainDate) needs a Temporal.PlainDate')
   }
-  const asObjects = ['2026-01-31', '2024-02-29', '+010000-01-01'].map((s) => PlainDate.from(s))
-  const names = Object.keys(dm).filter((n) => typeof dm[n] === 'function').sort()
+  const asObjects = ['2026-01-31', '2024-02-29', '+010000-01-01'].map((s) =>
+    PlainDate.from(s),
+  )
+  const names = Object.keys(dm)
+    .filter((n) => typeof dm[n] === 'function')
+    .toSorted()
   const results = {}
   for (const name of names) {
     const fn = dm[name]
     const rows = []
     for (const d of DATES) {
-      rows.push(outcome(() => fn(d)))
-      rows.push(outcome(() => fn(d, 'yyyy-MM-dd')))
-      rows.push(outcome(() => fn([d, '2026-08-06'])))
-      rows.push(outcome(() => fn({ start: d, end: d }))) // single-day interval: safe
+      rows.push(
+        outcome(() => fn(d)),
+        outcome(() => fn(d, 'yyyy-MM-dd')),
+      )
+      rows.push(
+        outcome(() => fn([d, '2026-08-06'])),
+        outcome(() => fn({ start: d, end: d })),
+      ) // single-day interval: safe
       for (const n of AMOUNTS) rows.push(outcome(() => fn(d, n)))
-      for (const other of ['2026-08-06', '2024-02-29', d]) rows.push(outcome(() => fn(d, other)))
+      for (const other of ['2026-08-06', '2024-02-29', d])
+        rows.push(outcome(() => fn(d, other)))
       for (const w of [0, 1, 7]) rows.push(outcome(() => fn(d, { weekStartsOn: w })))
     }
     for (const iv of INTERVALS) {
-      rows.push(outcome(() => fn(iv)))
-      rows.push(outcome(() => fn('2026-01-03', iv)))
-      rows.push(outcome(() => fn(iv, INTERVALS[0])))
-      rows.push(outcome(() => fn(iv, { weekStartsOn: 1 })))
+      rows.push(
+        outcome(() => fn(iv)),
+        outcome(() => fn('2026-01-03', iv)),
+      )
+      rows.push(
+        outcome(() => fn(iv, INTERVALS[0])),
+        outcome(() => fn(iv, { weekStartsOn: 1 })),
+      )
     }
     for (const m of MOMENTS) {
-      rows.push(outcome(() => fn(m)))
-      rows.push(outcome(() => fn(m, 'utc')))
-      rows.push(outcome(() => fn(m, 'Asia/Tokyo')))
-      rows.push(outcome(() => fn(m, 'America/New_York')))
+      rows.push(
+        outcome(() => fn(m)),
+        outcome(() => fn(m, 'utc')),
+      )
+      rows.push(
+        outcome(() => fn(m, 'Asia/Tokyo')),
+        outcome(() => fn(m, 'America/New_York')),
+      )
     }
     for (const pd of asObjects) {
-      rows.push(outcome(() => fn(pd)))
-      rows.push(outcome(() => fn(pd, 1)))
-      rows.push(outcome(() => fn(pd, 'utc')))
-      rows.push(outcome(() => fn(pd, { weekStartsOn: 1 })))
+      rows.push(
+        outcome(() => fn(pd)),
+        outcome(() => fn(pd, 1)),
+      )
+      rows.push(
+        outcome(() => fn(pd, 'utc')),
+        outcome(() => fn(pd, { weekStartsOn: 1 })),
+      )
       rows.push(outcome(() => fn({ start: pd, end: pd })))
     }
     results[name] = rows

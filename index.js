@@ -14,8 +14,7 @@ import { Temporal } from 'temporal-polyfill'
  * the epoch). Outside it, Temporal throws and we re-throw with the `daymath:`
  * prefix.
  */
-const ISO_DAY =
-  /^(?:[+-]\d{6}|\d{4})-\d{2}-\d{2}$/
+const ISO_DAY = /^(?:[+-]\d{6}|\d{4})-\d{2}-\d{2}$/u
 
 /** @typedef {string | Temporal.PlainDate} DayInput */
 /**
@@ -38,6 +37,7 @@ const ISO_DAY =
  * `instanceof` recognises only one of those. Every Temporal puts this tag on
  * `PlainDate.prototype` as a non-writable property, so it is the portable brand.
  * @param {unknown} value
+ * @returns {value is Temporal.PlainDate} a predicate, so callers narrow
  */
 function isPlainDate(value) {
   return Object.prototype.toString.call(value) === '[object Temporal.PlainDate]'
@@ -66,21 +66,22 @@ function toPlainDate(value, label = 'date') {
       `daymath: Date is not allowed for ${label} (pass ISO 8601 day string)`,
     )
   }
-  const day = isPlainDate(value) ? value.toString() : value
-  if (typeof day !== 'string') {
+  // Named `text`, not `day`: a local `day` would shadow the exported day().
+  const text = isPlainDate(value) ? value.toString() : value
+  if (typeof text !== 'string') {
     throw new TypeError(
       `daymath: ${label} must be ISO 8601 day string or Temporal.PlainDate`,
     )
   }
-  if (!ISO_DAY.test(day)) {
+  if (!ISO_DAY.test(text)) {
     throw new RangeError(
-      `daymath: ${label} must be ISO 8601 day YYYY-MM-DD or ±YYYYYY-MM-DD (got ${JSON.stringify(day)})`,
+      `daymath: ${label} must be ISO 8601 day YYYY-MM-DD or ±YYYYYY-MM-DD (got ${JSON.stringify(text)})`,
     )
   }
   try {
-    return Temporal.PlainDate.from(day)
+    return Temporal.PlainDate.from(text)
   } catch (err) {
-    throw new RangeError(`daymath: invalid ${label} ${JSON.stringify(day)}`, {
+    throw new RangeError(`daymath: invalid ${label} ${JSON.stringify(text)}`, {
       cause: err,
     })
   }
@@ -148,7 +149,7 @@ function assertNonEmptyDates(dates) {
 
 /**
  * @param {WeekOptions} [options]
- * @returns {0|1|2|3|4|5|6}
+ * @returns {0|1|2|3|4|5|6|7} 7 is the default, so 0-6 was never the real range
  */
 function weekStartsOnFrom(options) {
   const w = options?.weekStartsOn ?? 7
@@ -167,8 +168,8 @@ function toInterval(interval) {
   // and the failure then surfaced as "start must be ISO 8601 day string" —
   // naming a property the caller never meant to pass.
   if (
-    interval == null ||
-    typeof interval !== 'object' ||
+    interval === null || // typeof null is 'object', so it needs its own test
+    typeof interval !== 'object' || // and this already catches undefined
     !('start' in interval) ||
     !('end' in interval)
   ) {
@@ -222,7 +223,8 @@ function toInterval(interval) {
 export function day(moment, tz) {
   // Already a day, in either accepted spelling. Every other export takes both,
   // so this one does too.
-  const isDay = isPlainDate(moment) || (typeof moment === 'string' && ISO_DAY.test(moment))
+  const isDay =
+    isPlainDate(moment) || (typeof moment === 'string' && ISO_DAY.test(moment))
   const isMoment = isDay || moment instanceof Date || typeof moment === 'number'
 
   let zone = tz
@@ -232,7 +234,7 @@ export function day(moment, tz) {
         'daymath: day() takes a Date, epoch milliseconds, or an ISO 8601 day',
       )
     }
-    if (tz != null) {
+    if (tz !== undefined && tz !== null) {
       throw new TypeError(
         `daymath: day() got two time zones, ${JSON.stringify(moment)} and ${JSON.stringify(tz)}`,
       )
@@ -272,7 +274,12 @@ export function day(moment, tz) {
   // Truncate, because `new Date(n)` truncates, and the contract here is that a
   // number reads exactly as it does. Verified equal on positive and negative
   // fractions. Sub-millisecond precision cannot change a calendar day anyway.
-  const epochMs = moment instanceof Date ? moment.getTime() : Math.trunc(moment)
+  // Every other shape returned above, so only a number or a Date reaches here.
+  // The cast says what the control flow already guarantees but tsc cannot see.
+  const epochMs =
+    typeof moment === 'number'
+      ? Math.trunc(moment)
+      : /** @type {Date} */ (moment).getTime()
   return guardRange('day', () =>
     Temporal.Instant.fromEpochMilliseconds(epochMs)
       .toZonedDateTimeISO(zone)
@@ -743,9 +750,7 @@ export function differenceInQuarters(dateLeft, dateRight) {
 export function differenceInCalendarQuarters(dateLeft, dateRight) {
   const left = toPlainDate(dateLeft, 'dateLeft')
   const right = toPlainDate(dateRight, 'dateRight')
-  return (
-    (left.year - right.year) * 4 + (getQuarter(left) - getQuarter(right))
-  )
+  return (left.year - right.year) * 4 + (getQuarter(left) - getQuarter(right))
 }
 
 // ─── compare / equal ───────────────────────────────────────────────
@@ -807,9 +812,9 @@ export function isSameWeek(dateLeft, dateRight, options) {
   const right = toPlainDate(dateRight, 'dateRight')
   // own guard, so a week start below the minimum does not say startOfWeek
   return guardRange('isSameWeek', () =>
-    left.subtract({ days: daysIntoWeek(left, options) }).equals(
-      right.subtract({ days: daysIntoWeek(right, options) }),
-    ),
+    left
+      .subtract({ days: daysIntoWeek(left, options) })
+      .equals(right.subtract({ days: daysIntoWeek(right, options) })),
   )
 }
 
@@ -1029,8 +1034,7 @@ export function isWithinInterval(date, interval) {
     throw new RangeError('daymath: interval start must not be after end')
   }
   return (
-    Temporal.PlainDate.compare(d, start) >= 0 &&
-    Temporal.PlainDate.compare(d, end) <= 0
+    Temporal.PlainDate.compare(d, start) >= 0 && Temporal.PlainDate.compare(d, end) <= 0
   )
 }
 

@@ -18,6 +18,11 @@
   ],
   "scripts": {
     "test": "node --test test.js",
+    "lint": "oxlint -c oxlint.jsonc",
+    "lint:fix": "oxlint -c oxlint.jsonc --fix",
+    "typecheck": "tsc -p tsconfig.json",
+    "format": "oxfmt -c oxfmt.json index.js index.d.ts test.js scripts examples",
+    "format:check": "oxfmt -c oxfmt.json --check index.js index.d.ts test.js scripts examples",
     "test:coverage": "c8 --include=index.js --check-coverage --lines 100 --functions 100 --branches 100 --reporter=text --reporter=lcov node --test test.js",
     "test:differential": "node scripts/differential.mjs",
     "test:differential:quick": "node scripts/differential.mjs 2020 2030",
@@ -51,10 +56,13 @@
     "temporal-polyfill": "^1.0.3"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20.19.0 <21 || >=22.12.0"
   },
   "devDependencies": {
     "c8": "^12.0.0",
-    "date-fns": "4.4.0"
+    "date-fns": "4.4.0",
+    "oxfmt": "0.62.0",
+    "oxlint": "1.77.0",
+    "typescript": "7.0.2"
   }
 }

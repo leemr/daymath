@@ -169,16 +169,19 @@ in `scripts/cross-runtime.baseline.json`, which is the only place it cannot go s
 
 ## Requirements
 
-ESM only, and it works on Node 18 and up.
+ESM only. **Node 20.19+, or 22.12+.**
 
-`require('daymath')` is different: it needs **Node 20.19+ or 22.12+**, where `require(esm)`
-landed. `temporal-polyfill` is also ESM-only, so a CJS build of daymath would not escape this.
-Bundlers and browsers are unaffected. A Jest consumer needs a `transformIgnorePatterns` entry,
-because Jest does not use Node's resolution.
+That floor is `require()`, not `import`. Node's `require(esm)` landed in 20.19 and 22.12, so
+those are the versions where `require('daymath')` works. `engines` states the range exactly,
+including the gap at 22.0–22.11. `temporal-polyfill` is ESM-only too, so a CJS build of daymath
+would not escape this. Bundlers and browsers are unaffected. A Jest consumer needs a
+`transformIgnorePatterns` entry, because Jest does not use Node's resolution.
+
+Node 18 was supported through 0.3.0 and is dropped here. It went end-of-life in April 2025.
 
 ## Types & tests
 
-Plain JS + `index.d.ts` (no compile step). CI runs on Node 18, 20, 22, 24, and 26; the
+Plain JS + `index.d.ts` (no compile step). CI runs on Node 20, 22, 24, and 26; the
 coverage gate runs on 26, which is also the version in `.node-version` and the one used
 to publish. The matrix still proves the floor.
 

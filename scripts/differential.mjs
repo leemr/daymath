@@ -64,6 +64,8 @@ function* days() {
   end.setFullYear(TO, 11, 31)
   const cur = new Date(2000, 0, 1, 12)
   cur.setFullYear(FROM, 0, 1)
+  // oxlint-disable-next-line no-unmodified-loop-condition -- cur is mutated by
+  // setDate below, not reassigned, which the rule cannot see.
   while (cur <= end) {
     yield fromDate(cur)
     cur.setDate(cur.getDate() + 1)
@@ -118,15 +120,27 @@ const KNOWN = {
     status: 'SETTLED',
     why: 'Derived from differenceInMonths (trunc /3), so it inherits the date-fns bug above and nothing else.',
     refute:
-      'Measured over 1900-2100, not assumed: every quarter divergence also diverges in months, 0 without, and daymath\'s differenceInQuarters === trunc(differenceInMonths / 3) with 0 mismatches. If either check stops holding, this is no longer a derived entry.',
+      "Measured over 1900-2100, not assumed: every quarter divergence also diverges in months, 0 without, and daymath's differenceInQuarters === trunc(differenceInMonths / 3) with 0 mismatches. If either check stops holding, this is no longer a derived entry.",
   },
 }
 
 // Expected divergence counts per range. Counts are only meaningful for a range
 // that has been measured, so an unlisted range asserts nothing and says so.
 const BASELINES = {
-  '1900-2100': { setDate: 39730, differenceInMonths: 1000, differenceInQuarters: 750, setYear: 196, differenceInYears: 98 },
-  '2020-2030': { setDate: 2166, differenceInMonths: 57, differenceInQuarters: 43, setYear: 12, differenceInYears: 6 },
+  '1900-2100': {
+    setDate: 39730,
+    differenceInMonths: 1000,
+    differenceInQuarters: 750,
+    setYear: 196,
+    differenceInYears: 98,
+  },
+  '2020-2030': {
+    setDate: 2166,
+    differenceInMonths: 57,
+    differenceInQuarters: 43,
+    setYear: 12,
+    differenceInYears: 6,
+  },
 }
 
 // ─── the comparison table ──────────────────────────────────────────
@@ -135,7 +149,9 @@ const BASELINES = {
 // kind 'amount' → f(date, n) returns an ISO day string
 // kind 'pair'   → f(dateLeft, dateRight) returns a number or boolean
 
-const AMOUNTS = [-400, -365, -100, -31, -12, -7, -3, -1, 0, 1, 3, 7, 12, 31, 100, 365, 400]
+const AMOUNTS = [
+  -400, -365, -100, -31, -12, -7, -3, -1, 0, 1, 3, 7, 12, 31, 100, 365, 400,
+]
 const OFFSETS = [-400, -365, -90, -31, -7, -1, 0, 1, 7, 31, 90, 365, 400]
 
 // `adapt` maps date-fns's answer into daymath's convention before comparing, and
@@ -146,35 +162,115 @@ const OFFSETS = [-400, -365, -90, -31, -7, -1, 0, 1, 7, 31, 90, 365, 400]
 /** @type {Array<{name: string, kind: string, mine: Function, theirs: Function, args?: number[], adapt?: Function, theirArg?: Function}>} */
 const CASES = [
   // day -> day
-  ...['startOfMonth', 'endOfMonth', 'startOfYear', 'endOfYear', 'startOfQuarter', 'endOfQuarter', 'startOfWeek', 'endOfWeek'].map(
-    (name) => ({ name, kind: 'day', mine: dm[name], theirs: fns[name] }),
-  ),
+  ...[
+    'startOfMonth',
+    'endOfMonth',
+    'startOfYear',
+    'endOfYear',
+    'startOfQuarter',
+    'endOfQuarter',
+    'startOfWeek',
+    'endOfWeek',
+  ].map((name) => ({ name, kind: 'day', mine: dm[name], theirs: fns[name] })),
   // day -> value
-  ...['getYear', 'getDate', 'getDayOfYear', 'getDaysInMonth', 'getQuarter', 'isLeapYear',
-    'isSunday', 'isMonday', 'isTuesday', 'isWednesday', 'isThursday', 'isFriday', 'isSaturday', 'isWeekend',
-    'isFirstDayOfMonth', 'isLastDayOfMonth'].map(
-    (name) => ({ name, kind: 'value', mine: dm[name], theirs: fns[name] }),
-  ),
+  ...[
+    'getYear',
+    'getDate',
+    'getDayOfYear',
+    'getDaysInMonth',
+    'getQuarter',
+    'isLeapYear',
+    'isSunday',
+    'isMonday',
+    'isTuesday',
+    'isWednesday',
+    'isThursday',
+    'isFriday',
+    'isSaturday',
+    'isWeekend',
+    'isFirstDayOfMonth',
+    'isLastDayOfMonth',
+  ].map((name) => ({ name, kind: 'value', mine: dm[name], theirs: fns[name] })),
   // daymath is ISO 1…12, date-fns is 0…11
-  { name: 'getMonth', kind: 'value', mine: dm.getMonth, theirs: fns.getMonth, adapt: (m) => m + 1 },
+  {
+    name: 'getMonth',
+    kind: 'value',
+    mine: dm.getMonth,
+    theirs: fns.getMonth,
+    adapt: (m) => m + 1,
+  },
   // daymath is ISO 1=Mon…7=Sun, date-fns is 0=Sun…6=Sat; only Sunday moves
-  { name: 'getDay', kind: 'value', mine: dm.getDay, theirs: fns.getDay, adapt: (d) => (d === 0 ? 7 : d) },
+  {
+    name: 'getDay',
+    kind: 'value',
+    mine: dm.getDay,
+    theirs: fns.getDay,
+    adapt: (d) => (d === 0 ? 7 : d),
+  },
   // (day, amount) -> day
-  ...['addDays', 'subDays', 'addWeeks', 'subWeeks', 'addMonths', 'subMonths', 'addYears', 'subYears', 'addQuarters', 'subQuarters'].map(
-    (name) => ({ name, kind: 'amount', mine: dm[name], theirs: fns[name], args: AMOUNTS }),
-  ),
+  ...[
+    'addDays',
+    'subDays',
+    'addWeeks',
+    'subWeeks',
+    'addMonths',
+    'subMonths',
+    'addYears',
+    'subYears',
+    'addQuarters',
+    'subQuarters',
+  ].map((name) => ({
+    name,
+    kind: 'amount',
+    mine: dm[name],
+    theirs: fns[name],
+    args: AMOUNTS,
+  })),
   // setters take a field value, not a delta
-  { name: 'setYear', kind: 'amount', mine: dm.setYear, theirs: fns.setYear, args: [1900, 1999, 2000, 2024, 2025, 2100] },
+  {
+    name: 'setYear',
+    kind: 'amount',
+    mine: dm.setYear,
+    theirs: fns.setYear,
+    args: [1900, 1999, 2000, 2024, 2025, 2100],
+  },
   // daymath takes ISO 1…12; date-fns needs the same month as 0…11
-  { name: 'setMonth', kind: 'amount', mine: dm.setMonth, theirs: fns.setMonth, args: [1, 2, 3, 6, 9, 12], theirArg: (m) => m - 1 },
-  { name: 'setDate', kind: 'amount', mine: dm.setDate, theirs: fns.setDate, args: [1, 5, 15, 28, 29, 30, 31] },
+  {
+    name: 'setMonth',
+    kind: 'amount',
+    mine: dm.setMonth,
+    theirs: fns.setMonth,
+    args: [1, 2, 3, 6, 9, 12],
+    theirArg: (m) => m - 1,
+  },
+  {
+    name: 'setDate',
+    kind: 'amount',
+    mine: dm.setDate,
+    theirs: fns.setDate,
+    args: [1, 5, 15, 28, 29, 30, 31],
+  },
   // (dayLeft, dayRight) -> value
-  ...['differenceInDays', 'differenceInWeeks', 'differenceInMonths', 'differenceInCalendarMonths',
-    'differenceInYears', 'differenceInCalendarYears', 'differenceInQuarters', 'differenceInCalendarQuarters',
-    'isBefore', 'isAfter', 'isEqual', 'isSameDay', 'isSameWeek', 'isSameMonth', 'isSameYear', 'isSameQuarter',
-    'compareAsc', 'compareDesc'].map(
-    (name) => ({ name, kind: 'pair', mine: dm[name], theirs: fns[name] }),
-  ),
+  ...[
+    'differenceInDays',
+    'differenceInWeeks',
+    'differenceInMonths',
+    'differenceInCalendarMonths',
+    'differenceInYears',
+    'differenceInCalendarYears',
+    'differenceInQuarters',
+    'differenceInCalendarQuarters',
+    'isBefore',
+    'isAfter',
+    'isEqual',
+    'isSameDay',
+    'isSameWeek',
+    'isSameMonth',
+    'isSameYear',
+    'isSameQuarter',
+    'compareAsc',
+    'compareDesc',
+  ].map((name) => ({ name, kind: 'pair', mine: dm[name], theirs: fns[name] })),
 ]
 
 // ─── run ───────────────────────────────────────────────────────────
@@ -209,19 +305,22 @@ for (const iso of days()) {
       const mine = c.mine(iso)
       const theirs = theirDay(c.theirs(dt))
       comparisons += 1
-      if (mine !== theirs) record(c.name, `${c.name}('${iso}') mine=${mine} theirs=${theirs}`)
+      if (mine !== theirs)
+        record(c.name, `${c.name}('${iso}') mine=${mine} theirs=${theirs}`)
     } else if (c.kind === 'value') {
       const mine = c.mine(iso)
       const raw = c.theirs(dt)
       const theirs = c.adapt ? c.adapt(raw) : raw
       comparisons += 1
-      if (mine !== theirs) record(c.name, `${c.name}('${iso}') mine=${mine} theirs=${theirs}`)
+      if (mine !== theirs)
+        record(c.name, `${c.name}('${iso}') mine=${mine} theirs=${theirs}`)
     } else if (c.kind === 'amount') {
       for (const n of c.args) {
         const mine = c.mine(iso, n)
         const theirs = theirDay(c.theirs(dt, c.theirArg ? c.theirArg(n) : n))
         comparisons += 1
-        if (mine !== theirs) record(c.name, `${c.name}('${iso}', ${n}) mine=${mine} theirs=${theirs}`)
+        if (mine !== theirs)
+          record(c.name, `${c.name}('${iso}', ${n}) mine=${mine} theirs=${theirs}`)
       }
     } else {
       // pair: this day against a fixed set of offsets, not the full cross product
@@ -235,7 +334,10 @@ for (const iso of days()) {
         // `!==`, not Object.is: it treats 0 and -0 as equal. Both libraries
         // return 0 from compareDesc(x, x) today, so nothing is being hidden.
         if (mine !== theirs) {
-          record(c.name, `${c.name}('${iso}', '${otherIso}') mine=${mine} theirs=${theirs}`)
+          record(
+            c.name,
+            `${c.name}('${iso}', '${otherIso}') mine=${mine} theirs=${theirs}`,
+          )
         }
       }
     }
@@ -246,7 +348,9 @@ const ms = Number(process.hrtime.bigint() - t0) / 1e6
 
 // ─── report ────────────────────────────────────────────────────────
 
-console.log(`\ndaymath vs date-fns ${fns.version ?? '4.x'} — ${FROM}-01-01 to ${TO}-12-31`)
+console.log(
+  `\ndaymath vs date-fns ${fns.version ?? '4.x'} — ${FROM}-01-01 to ${TO}-12-31`,
+)
 console.log(`${comparisons.toLocaleString()} comparisons in ${(ms / 1000).toFixed(1)}s\n`)
 
 const baseline = BASELINES[`${FROM}-${TO}`]
@@ -273,14 +377,14 @@ function wrap(text, indent = '         ') {
 
 const failures = []
 
-for (const [name, { count, samples }] of [...diffs].sort((a, b) => b[1].count - a[1].count)) {
+for (const [name, { count, samples }] of [...diffs].toSorted(
+  (a, b) => b[1].count - a[1].count,
+)) {
   const known = KNOWN[name]
   const label = known ? known.status.padEnd(8) : 'UNKNOWN '
   console.log(`${label}${name}: ${count.toLocaleString()} divergences`)
 
-  if (!known) {
-    failures.push(`${name} diverges and is not in KNOWN`)
-  } else {
+  if (known) {
     console.log(wrap(known.why))
     console.log(wrap(`REFUTE: ${known.refute}`))
     const expected = baseline?.[name]
@@ -290,6 +394,8 @@ for (const [name, { count, samples }] of [...diffs].sort((a, b) => b[1].count - 
         `${name} count moved ${expected.toLocaleString()} → ${count.toLocaleString()}`,
       )
     }
+  } else {
+    failures.push(`${name} diverges and is not in KNOWN`)
   }
   for (const s of samples) console.log(`         ${s}`)
   console.log()
@@ -310,10 +416,12 @@ console.log(`  ${clean.join(' ')}\n`)
 
 const open = Object.values(KNOWN).filter((k) => k.status === 'OPEN').length
 if (open) {
-  console.log(`${open} of ${Object.keys(KNOWN).length} known divergences are OPEN — daymath has not decided these.\n`)
+  console.log(
+    `${open} of ${Object.keys(KNOWN).length} known divergences are OPEN — daymath has not decided these.\n`,
+  )
 }
 
-if (failures.length) {
+if (failures.length > 0) {
   for (const f of failures) console.log(`FAIL — ${f}`)
   console.log('\nFix daymath, or update KNOWN/BASELINES with a fresh measurement.')
   process.exit(1)

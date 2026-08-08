@@ -98,11 +98,17 @@ export function endOfWeek(date: DayInput, options?: WeekOptions): string
 export function differenceInDays(dateLeft: DayInput, dateRight: DayInput): number
 export function differenceInWeeks(dateLeft: DayInput, dateRight: DayInput): number
 export function differenceInMonths(dateLeft: DayInput, dateRight: DayInput): number
-export function differenceInCalendarMonths(dateLeft: DayInput, dateRight: DayInput): number
+export function differenceInCalendarMonths(
+  dateLeft: DayInput,
+  dateRight: DayInput,
+): number
 export function differenceInYears(dateLeft: DayInput, dateRight: DayInput): number
 export function differenceInCalendarYears(dateLeft: DayInput, dateRight: DayInput): number
 export function differenceInQuarters(dateLeft: DayInput, dateRight: DayInput): number
-export function differenceInCalendarQuarters(dateLeft: DayInput, dateRight: DayInput): number
+export function differenceInCalendarQuarters(
+  dateLeft: DayInput,
+  dateRight: DayInput,
+): number
 
 export function isBefore(date: DayInput, dateToCompare: DayInput): boolean
 export function isAfter(date: DayInput, dateToCompare: DayInput): boolean

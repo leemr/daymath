@@ -137,7 +137,10 @@ describe('day() — the one export that reads a clock', () => {
         () => dm.day(bad),
         (err) => {
           assert.ok(err instanceof RangeError)
-          assert.equal(err.message, `daymath: day() got an unknown time zone ${JSON.stringify(bad)}`)
+          assert.equal(
+            err.message,
+            `daymath: day() got an unknown time zone ${JSON.stringify(bad)}`,
+          )
           assert.ok(err.cause instanceof Error) // the runtime's own error is kept
           return true
         },
@@ -182,7 +185,10 @@ describe('day() — the one export that reads a clock', () => {
     // Otherwise a caller mapping rows that are sometimes a Date and sometimes a
     // day string sees a mistyped zone fail on only some rows.
     assert.throws(() => dm.day('2026-05-05', 'Mars/Olympus'), /unknown time zone/)
-    assert.throws(() => dm.day(Temporal.PlainDate.from('2026-05-05'), 'nope'), /unknown time zone/)
+    assert.throws(
+      () => dm.day(Temporal.PlainDate.from('2026-05-05'), 'nope'),
+      /unknown time zone/,
+    )
     assert.throws(() => dm.day(new Date(0), 'Mars/Olympus'), /unknown time zone/)
     // and it still reads no clock for a day input, so the result is pure
     assert.equal(dm.day('2026-05-05', 'Asia/Tokyo'), '2026-05-05')
@@ -211,47 +217,65 @@ describe('day() — the one export that reads a clock', () => {
   it('refuses an ambiguous or unusable moment', () => {
     // Nobody can tell November from December in this.
     assert.throws(() => dm.day('11/12/2026'), /unknown time zone/)
-    assert.throws(() => dm.day(new Date('garbage')), (err) => {
-      assert.ok(err instanceof RangeError)
-      assert.equal(err.message, 'daymath: day() got an Invalid Date')
-      return true
-    })
-    for (const bad of [NaN, Infinity, -Infinity]) {
-      assert.throws(() => dm.day(bad), (err) => {
+    assert.throws(
+      () => dm.day(new Date('garbage')),
+      (err) => {
         assert.ok(err instanceof RangeError)
-        assert.equal(err.message, `daymath: day() got a non-finite time value ${bad}`)
+        assert.equal(err.message, 'daymath: day() got an Invalid Date')
         return true
-      })
+      },
+    )
+    for (const bad of [NaN, Infinity, -Infinity]) {
+      assert.throws(
+        () => dm.day(bad),
+        (err) => {
+          assert.ok(err instanceof RangeError)
+          assert.equal(err.message, `daymath: day() got a non-finite time value ${bad}`)
+          return true
+        },
+      )
     }
     for (const bad of [true, [], {}, Symbol('x')]) {
-      assert.throws(() => dm.day(bad), (err) => {
+      assert.throws(
+        () => dm.day(bad),
+        (err) => {
+          assert.ok(err instanceof TypeError)
+          assert.equal(
+            err.message,
+            'daymath: day() takes a Date, epoch milliseconds, or an ISO 8601 day',
+          )
+          return true
+        },
+      )
+    }
+    // A zone in both slots is a shape mistake, not a silent preference.
+    assert.throws(
+      () => dm.day('utc', 'Asia/Tokyo'),
+      (err) => {
         assert.ok(err instanceof TypeError)
         assert.equal(
           err.message,
-          'daymath: day() takes a Date, epoch milliseconds, or an ISO 8601 day',
+          'daymath: day() got two time zones, "utc" and "Asia/Tokyo"',
         )
         return true
-      })
-    }
-    // A zone in both slots is a shape mistake, not a silent preference.
-    assert.throws(() => dm.day('utc', 'Asia/Tokyo'), (err) => {
-      assert.ok(err instanceof TypeError)
-      assert.equal(err.message, 'daymath: day() got two time zones, "utc" and "Asia/Tokyo"')
-      return true
-    })
+      },
+    )
     // Beyond the representable range, it keeps the daymath: prefix. Asserted on
     // err.message, because a RegExp here would match String(err) and its class.
-    assert.throws(() => dm.day(8.64e15 + 1, 'utc'), (err) => {
-      assert.ok(err instanceof RangeError)
-      assert.equal(err.message, 'daymath: day could not produce a valid date')
-      assert.ok(err.cause instanceof Error)
-      return true
-    })
+    assert.throws(
+      () => dm.day(8.64e15 + 1, 'utc'),
+      (err) => {
+        assert.ok(err instanceof RangeError)
+        assert.equal(err.message, 'daymath: day could not produce a valid date')
+        assert.ok(err.cause instanceof Error)
+        return true
+      },
+    )
   })
 
   it('null and undefined mean "now", and a zone in slot two still counts', () => {
     const before = utcDayNow()
-    const [bare, nul, undef] = [dm.day(), dm.day(null), dm.day(undefined)]
+    const [bare, nul, undef] = [dm.day(), dm.day(null), dm.day()]
     const after = utcDayNow()
     if (before === after) {
       assert.equal(nul, bare)
@@ -336,7 +360,11 @@ describe('a PlainDate from another Temporal implementation', () => {
     for (const name of names) {
       const viaDate = capture(() => dm[name](foreign))
       const viaString = capture(() => dm[name](iso))
-      assert.deepEqual(viaDate, viaString, `${name} treats a foreign PlainDate differently`)
+      assert.deepEqual(
+        viaDate,
+        viaString,
+        `${name} treats a foreign PlainDate differently`,
+      )
     }
   })
 
@@ -408,13 +436,16 @@ describe('add / sub', () => {
       [addMonths, 'addMonths'],
       [addYears, 'addYears'],
     ]) {
-      assert.throws(() => fn(d, 1e9), (err) => {
-        assert.ok(err instanceof RangeError)
-        assert.match(err.message, new RegExp(`^daymath: ${name} could not produce`)) // err.message has no class prefix
+      assert.throws(
+        () => fn(d, 1e9),
+        (err) => {
+          assert.ok(err instanceof RangeError)
+          assert.match(err.message, new RegExp(`^daymath: ${name} could not produce`)) // err.message has no class prefix
 
-        assert.ok(err.cause instanceof Error) // original Temporal error kept
-        return true
-      })
+          assert.ok(err.cause instanceof Error) // original Temporal error kept
+          return true
+        },
+      )
     }
   })
 })
@@ -540,7 +571,13 @@ describe('difference / compare', () => {
 
   it('differenceInMonths(addMonths(d, n), d) === n', () => {
     // the law that picked this implementation over Temporal since()
-    for (const start of ['2026-01-31', '2026-01-30', '2024-02-29', '2026-03-31', '2026-08-06']) {
+    for (const start of [
+      '2026-01-31',
+      '2026-01-30',
+      '2024-02-29',
+      '2026-03-31',
+      '2026-08-06',
+    ]) {
       for (let n = -24; n <= 24; n += 1) {
         assert.equal(differenceInMonths(addMonths(start, n), start), n, `${start} + ${n}`)
       }
@@ -560,7 +597,13 @@ describe('difference / compare', () => {
   })
 
   it('differenceInYears(addYears(d, n), d) === n', () => {
-    for (const start of ['2024-02-29', '2026-01-31', '2026-08-06', '2000-02-29', '1900-03-01']) {
+    for (const start of [
+      '2024-02-29',
+      '2026-01-31',
+      '2026-08-06',
+      '2000-02-29',
+      '1900-03-01',
+    ]) {
       for (let n = -12; n <= 12; n += 1) {
         assert.equal(differenceInYears(addYears(start, n), start), n, `${start} + ${n}`)
       }
@@ -588,7 +631,13 @@ describe('difference / compare', () => {
     // addMonths(earlier, n) <= later. Everything else about the month rule
     // follows from this plus whatever addMonths does, so this is the one to
     // keep if the others are ever cut.
-    for (const earlier of ['2026-01-31', '2026-01-30', '2024-02-29', '2026-08-06', '2025-12-31']) {
+    for (const earlier of [
+      '2026-01-31',
+      '2026-01-30',
+      '2024-02-29',
+      '2026-08-06',
+      '2025-12-31',
+    ]) {
       for (let step = 1; step <= 400; step += 7) {
         const later = addDays(earlier, step)
         const k = differenceInMonths(later, earlier)
@@ -652,9 +701,21 @@ describe('difference / compare', () => {
       // `|| 0` on the expected side: raw Math.trunc still yields -0 for a
       // negative gap that truncates to zero, which is exactly what these
       // functions were changed to stop returning
-      assert.equal(differenceInWeeks(a, b), Math.trunc(differenceInDays(a, b) / 7) || 0, `weeks ${a} ${b}`)
-      assert.equal(differenceInQuarters(a, b), Math.trunc(differenceInMonths(a, b) / 3) || 0, `quarters ${a} ${b}`)
-      assert.equal(differenceInYears(a, b), Math.trunc(differenceInMonths(a, b) / 12) || 0, `years ${a} ${b}`)
+      assert.equal(
+        differenceInWeeks(a, b),
+        Math.trunc(differenceInDays(a, b) / 7) || 0,
+        `weeks ${a} ${b}`,
+      )
+      assert.equal(
+        differenceInQuarters(a, b),
+        Math.trunc(differenceInMonths(a, b) / 3) || 0,
+        `quarters ${a} ${b}`,
+      )
+      assert.equal(
+        differenceInYears(a, b),
+        Math.trunc(differenceInMonths(a, b) / 12) || 0,
+        `years ${a} ${b}`,
+      )
     }
   })
 
@@ -676,10 +737,7 @@ describe('difference / compare', () => {
       ['2026-01-15', '2026-01-15'],
     ]) {
       for (const name of numeric) {
-        assert.ok(
-          !Object.is(dm[name](a, b), -0),
-          `${name}('${a}', '${b}') returned -0`,
-        )
+        assert.ok(!Object.is(dm[name](a, b), -0), `${name}('${a}', '${b}') returned -0`)
       }
     }
   })
@@ -691,7 +749,11 @@ describe('difference / compare', () => {
       ['2026-08-06', '2026-02-06'],
       ['2026-01-01', '2027-06-30'],
     ]) {
-      assert.equal(differenceInQuarters(a, b), Math.trunc(differenceInMonths(a, b) / 3), `${a} vs ${b}`)
+      assert.equal(
+        differenceInQuarters(a, b),
+        Math.trunc(differenceInMonths(a, b) / 3),
+        `${a} vs ${b}`,
+      )
     }
   })
 
@@ -735,8 +797,14 @@ describe('difference / compare', () => {
   })
 
   it('weekStartsOn validation', () => {
-    assert.throws(() => startOfWeek(d, { weekStartsOn: /** @type {any} */ (8) }), /weekStartsOn/)
-    assert.throws(() => startOfWeek(d, { weekStartsOn: /** @type {any} */ (-1) }), /weekStartsOn/)
+    assert.throws(
+      () => startOfWeek(d, { weekStartsOn: /** @type {any} */ (8) }),
+      /weekStartsOn/,
+    )
+    assert.throws(
+      () => startOfWeek(d, { weekStartsOn: /** @type {any} */ (-1) }),
+      /weekStartsOn/,
+    )
     assert.throws(
       () => startOfWeek(d, { weekStartsOn: /** @type {any} */ (1.5) }),
       /weekStartsOn/,
@@ -747,9 +815,21 @@ describe('difference / compare', () => {
     // 0 ≡ 7 (mod 7), so pre-0.3.0 callers passing 0 are unaffected
     for (let i = 0; i < 7; i += 1) {
       const day = addDays('2026-08-02', i) // Sunday through Saturday
-      assert.equal(startOfWeek(day, { weekStartsOn: 0 }), startOfWeek(day, { weekStartsOn: 7 }), day)
-      assert.equal(endOfWeek(day, { weekStartsOn: 0 }), endOfWeek(day, { weekStartsOn: 7 }), day)
-      assert.equal(startOfWeek(day), startOfWeek(day, { weekStartsOn: 7 }), `${day} default`)
+      assert.equal(
+        startOfWeek(day, { weekStartsOn: 0 }),
+        startOfWeek(day, { weekStartsOn: 7 }),
+        day,
+      )
+      assert.equal(
+        endOfWeek(day, { weekStartsOn: 0 }),
+        endOfWeek(day, { weekStartsOn: 7 }),
+        day,
+      )
+      assert.equal(
+        startOfWeek(day),
+        startOfWeek(day, { weekStartsOn: 7 }),
+        `${day} default`,
+      )
     }
   })
 })
@@ -773,10 +853,11 @@ describe('weekday predicates', () => {
 
 describe('intervals', () => {
   it('eachDayOfInterval', () => {
-    assert.deepEqual(
-      eachDayOfInterval({ start: '2026-08-05', end: '2026-08-07' }),
-      ['2026-08-05', '2026-08-06', '2026-08-07'],
-    )
+    assert.deepEqual(eachDayOfInterval({ start: '2026-08-05', end: '2026-08-07' }), [
+      '2026-08-05',
+      '2026-08-06',
+      '2026-08-07',
+    ])
     assert.throws(
       () => eachDayOfInterval({ start: '2026-08-07', end: '2026-08-05' }),
       /start must not be after end/,
@@ -807,8 +888,12 @@ describe('intervals', () => {
       return true
     }
     // Interval position differs: first arg for the walkers, second for these two.
-    const atArg1 = [dm.eachDayOfInterval, dm.eachMonthOfInterval, dm.eachYearOfInterval,
-      dm.areIntervalsOverlapping]
+    const atArg1 = [
+      dm.eachDayOfInterval,
+      dm.eachMonthOfInterval,
+      dm.eachYearOfInterval,
+      dm.areIntervalsOverlapping,
+    ]
     const atArg2 = [dm.isWithinInterval, dm.clamp]
     for (const [label, bad] of notIntervals) {
       for (const fn of atArg1) {
@@ -824,7 +909,7 @@ describe('intervals', () => {
     const reachedByArg1 = Object.keys(dm).filter(
       (n) => capture(() => dm[n](null)).message === INTERVAL_MSG,
     )
-    assert.deepEqual(reachedByArg1.sort(), atArg1.map((f) => f.name).sort())
+    assert.deepEqual(reachedByArg1.toSorted(), atArg1.map((f) => f.name).toSorted())
     // Slot 2 cannot be probed the same way, because clamp and isWithinInterval
     // take the *date* first while areIntervalsOverlapping takes an interval. So
     // assert the union instead: every export able to emit this message must be
@@ -836,18 +921,20 @@ describe('intervals', () => {
       ),
     )
     const declared = [...atArg1, ...atArg2].map((f) => f.name)
-    assert.deepEqual(emitsIntervalError.sort(), declared.sort())
+    assert.deepEqual(emitsIntervalError.toSorted(), declared.toSorted())
   })
 
   it('eachMonthOfInterval / eachYearOfInterval', () => {
-    assert.deepEqual(
-      eachMonthOfInterval({ start: '2026-01-15', end: '2026-03-20' }),
-      ['2026-01-01', '2026-02-01', '2026-03-01'],
-    )
-    assert.deepEqual(
-      eachYearOfInterval({ start: '2024-06-01', end: '2026-02-01' }),
-      ['2024-01-01', '2025-01-01', '2026-01-01'],
-    )
+    assert.deepEqual(eachMonthOfInterval({ start: '2026-01-15', end: '2026-03-20' }), [
+      '2026-01-01',
+      '2026-02-01',
+      '2026-03-01',
+    ])
+    assert.deepEqual(eachYearOfInterval({ start: '2024-06-01', end: '2026-02-01' }), [
+      '2024-01-01',
+      '2025-01-01',
+      '2026-01-01',
+    ])
     assert.throws(
       () => eachMonthOfInterval({ start: '2026-03-01', end: '2026-01-01' }),
       /start must not be after end/,
@@ -892,11 +979,7 @@ describe('intervals', () => {
       true,
     )
     assert.throws(
-      () =>
-        areIntervalsOverlapping(
-          { start: '2026-08-10', end: '2026-08-01' },
-          b,
-        ),
+      () => areIntervalsOverlapping({ start: '2026-08-10', end: '2026-08-01' }, b),
       /intervalLeft/,
     )
     assert.throws(
@@ -940,8 +1023,14 @@ describe('range edges', () => {
     ['startOfYear', () => startOfYear(MIN)],
     ['endOfYear', () => endOfYear(MAX)],
     ['isSameWeek', () => isSameWeek(MIN, MIN)],
-    ['eachMonthOfInterval', () => eachMonthOfInterval({ start: MIN, end: '-271821-05-01' })],
-    ['eachYearOfInterval', () => eachYearOfInterval({ start: MIN, end: '-271820-01-01' })],
+    [
+      'eachMonthOfInterval',
+      () => eachMonthOfInterval({ start: MIN, end: '-271821-05-01' }),
+    ],
+    [
+      'eachYearOfInterval',
+      () => eachYearOfInterval({ start: MIN, end: '-271820-01-01' }),
+    ],
   ]
 
   for (const [name, call] of cases) {

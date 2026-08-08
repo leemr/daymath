@@ -28,10 +28,14 @@ const BASELINE = fileURLToPath(new URL('./cross-runtime.baseline.json', import.m
 const write = process.argv.includes('--write')
 const verbose = process.argv.includes('--verbose')
 
+// oxlint-disable-next-line no-negated-condition -- the autofix inverts this into
+// a nested ternary that reads far worse than the flat chain.
 const runtime =
-  typeof Deno !== 'undefined' ? `Deno ${Deno.version.deno}`
-  : typeof Bun !== 'undefined' ? `Bun ${Bun.version}`
-  : `Node ${process.versions.node}`
+  typeof Deno !== 'undefined'
+    ? `Deno ${Deno.version.deno}`
+    : typeof Bun !== 'undefined'
+      ? `Bun ${Bun.version}`
+      : `Node ${process.versions.node}`
 const temporal = globalThis.Temporal ? 'native Temporal' : 'temporal-polyfill'
 
 // Joined on NUL, which cannot occur in a result. A space could: error
@@ -45,15 +49,20 @@ const SEP = '\u0000'
 const results = run(dm, Temporal.PlainDate)
 const names = Object.keys(results)
 const hashes = Object.fromEntries(names.map((n) => [n, hash(results[n].join(SEP))]))
-const calls = names.length ? names.length * results[names[0]].length : 0
+const calls = names.length > 0 ? names.length * results[names[0]].length : 0
 
 console.log(`daymath cross-runtime — ${runtime}, ${temporal}`)
 console.log(`${names.length} exports, ${calls} calls\n`)
 
 if (write) {
-  writeFileSync(BASELINE, `${JSON.stringify({ exports: names.length, calls, hashes }, null, 2)}\n`)
+  writeFileSync(
+    BASELINE,
+    `${JSON.stringify({ exports: names.length, calls, hashes }, null, 2)}\n`,
+  )
   console.log(`WROTE ${BASELINE}`)
-  console.log('Recorded on this runtime. Re-record only when behaviour changes on purpose.')
+  console.log(
+    'Recorded on this runtime. Re-record only when behaviour changes on purpose.',
+  )
   process.exit(0)
 }
 
@@ -70,7 +79,9 @@ try {
 // cover the whole surface, or a silently dropped function would read as a pass.
 const missing = Object.keys(baseline.hashes).filter((n) => !(n in hashes))
 const extra = names.filter((n) => !(n in baseline.hashes))
-const changed = names.filter((n) => n in baseline.hashes && baseline.hashes[n] !== hashes[n])
+const changed = names.filter(
+  (n) => n in baseline.hashes && baseline.hashes[n] !== hashes[n],
+)
 
 // Names first. `calls` is names.length x rows, so adding or removing an export
 // always moves the count too. Reporting the count first would hide *which*
@@ -82,7 +93,7 @@ for (const n of changed) console.error(`DIFFERS: ${n}`)
 if (calls !== baseline.calls) {
   console.error(
     `\nFAIL — battery changed: ${baseline.calls} calls recorded, ${calls} now.` +
-      (missing.length || extra.length
+      (missing.length > 0 || extra.length > 0
         ? ' The export list above explains it.'
         : ' The probe list changed, not the surface.'),
   )
@@ -90,8 +101,10 @@ if (calls !== baseline.calls) {
   process.exit(1)
 }
 
-if (verbose && changed.length) {
-  console.error('\nRe-run --write on a runtime you trust to see the other side; this run shows:')
+if (verbose && changed.length > 0) {
+  console.error(
+    '\nRe-run --write on a runtime you trust to see the other side; this run shows:',
+  )
   for (const n of changed) {
     console.error(`\n${n}:`)
     for (const [i, v] of results[n].entries()) {
@@ -100,8 +113,10 @@ if (verbose && changed.length) {
   }
 }
 
-if (missing.length || extra.length || changed.length) {
-  console.error(`\nFAIL — ${changed.length} differ, ${missing.length} missing, ${extra.length} new.`)
+if (missing.length > 0 || extra.length > 0 || changed.length > 0) {
+  console.error(
+    `\nFAIL — ${changed.length} differ, ${missing.length} missing, ${extra.length} new.`,
+  )
   process.exit(1)
 }
 

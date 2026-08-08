@@ -14,9 +14,9 @@ jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
-      # Active LTS + Current (not a 22 preference). engines still >=18.
+      # Active LTS + Current. Node 18 went end-of-life in April 2025.
       matrix:
-        node: [18, 20, 22, 24, 26]
+        node: [20, 22, 24, 26]
     name: Node ${{ matrix.node }}
     steps:
       - uses: actions/checkout@v7
@@ -25,6 +25,17 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: npm
       - run: npm ci
+      # Static gates run once, on the primary version. They are not per-version
+      # facts, so repeating them across the matrix only buys noise.
+      - name: Lint
+        if: matrix.node == 26
+        run: npm run lint
+      - name: Types (tsc over index.js JSDoc and index.d.ts)
+        if: matrix.node == 26
+        run: npm run typecheck
+      - name: Format
+        if: matrix.node == 26
+        run: npm run format:check
       - run: npm test
       - name: Cross-runtime baseline
         run: npm run test:runtimes

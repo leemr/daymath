@@ -18,7 +18,6 @@ daymath claims to run everywhere. This makes that testable, and fixes what testi
 
 - **Error messages no longer quote Temporal's own text.** `daymath: addDays could not produce a valid date (Out-of-bounds date)` becomes `daymath: addDays could not produce a valid date`. Implementations word the same failure differently — native V8 says `Temporal error: epoch days exceed maximum range.` — so the quoted text made daymath's message vary by runtime. The original error is still on `cause`. It was the only remaining difference across implementations, in 612 calls of a 46,512-call sweep at the time. It is now 0.
 - **A non-ISO calendar is refused rather than reinterpreted.** `2026-01-31[u-ca=buddhist]` is the same day as `2026-01-31`, but Thai Buddhist years run 543 ahead, so it is year 2569. Accepting it would make `getYear` answer `2026` where the caller's own object says `2569`. Calendars like `hebrew` and `chinese` renumber the month and day as well. Strings carrying an annotation were already refused; objects now match. A caller who means the ISO day can convert deliberately with `withCalendar('iso8601')`.
-- `engines` stays at `>=18`. The real constraint is `require()`, which needs Node 20.19+ or 22.12+ via `require(esm)`, and is now stated in the README rather than mis-encoded as an ESM floor.
 
 ### Added
 
@@ -39,12 +38,22 @@ daymath claims to run everywhere. This makes that testable, and fixes what testi
 
   Two things it deliberately does not do. It does not guess whether a number is seconds or milliseconds: 13 digits means milliseconds for 2001–2286 and seconds for the year 275760, and both are inside the supported range, so no digit or magnitude rule can separate them. It does not default the zone to the system zone, because that answer changes by region.
 
-- **`npm run test:runtimes`** — a cross-runtime baseline over every export, hashed per export. The call count lives in `scripts/cross-runtime.baseline.json` rather than in prose, so it cannot go stale. CI runs it on Node 18–26, on **Deno**, which ships native Temporal, and on **Bun**. It is the only check that can see the polyfill and the standard disagree.
+- **`npm run test:runtimes`** — a cross-runtime baseline over every export, hashed per export. The call count lives in `scripts/cross-runtime.baseline.json` rather than in prose, so it cannot go stale. CI runs it on Node 20–26, on **Deno**, which ships native Temporal, and on **Bun**. It is the only check that can see the polyfill and the standard disagree.
 - Tests for each fix, including a law that a foreign `PlainDate` must be indistinguishable from its ISO day string across every export, enumerated from the module rather than a hand-written list.
 - A bundle-size badge.
+- **Lint, format and type gates**, all three run in CI on the primary Node version:
+  `npm run lint` (oxlint), `npm run format:check` (oxfmt) and `npm run typecheck` (tsc).
+  The configs are `oxlint.jsonc`, `oxfmt.json` and `tsconfig.json` — deliberately not dotfiles.
+
+  The type gate is the one that earned its place immediately. `tsc --checkJs` reads the JSDoc in
+  `index.js`, so it covers the implementation and not only the declarations, and it found a
+  wrong type on a public option: `weekStartsOnFrom` was annotated `@returns {0|1|2|3|4|5|6}`
+  while returning `7`, the default, since 0.3.0 widened the range. Runtime was always correct.
+  100% coverage, the differential harness and the cross-runtime baseline all missed it.
 
 ### Removed
 
+- **Node 18.** It went end-of-life in April 2025. `engines` is now `>=20.19.0 <21 || >=22.12.0`, which states the real constraint: `require('daymath')` needs Node's `require(esm)`, which landed in 20.19 and 22.12. The range closes the gap at 22.0–22.11 rather than rounding it away. Dropping 18 also allows `Array#toSorted`, which is ES2023.
 - `globalThis.Temporal ?? TemporalPolyfill`. `temporal-polyfill` already resolves native itself, so this duplicated the check and hid where it happens.
 
 ## [0.3.0] — 2026-08-07
