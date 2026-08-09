@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-08-09
+
 ### Added
 
 - **daymath accepts a calendar annotation that only relabels the year, and the annotation rides along.** `buddhist`, `roc`, `japanese` and `gregory` all pass, so `getYear('2026-01-31[u-ca=buddhist]')` answers `2569`, `addDays` returns `'2026-02-01[u-ca=buddhist]'`, and `setYear(…, 2570)` returns `'2027-01-31[u-ca=buddhist]'`. Before this, every non-ISO calendar was refused outright, which was a wider refusal than the problem needed: normalising to ISO would have answered `2026` where the caller's own object says `2569`, but carrying the calendar answers `2569` and loses nothing.
@@ -207,7 +209,8 @@ the range-error fixes that had been sitting unreleased since `0.2.3`.
 
 - Package name reserved on npm; stub `addDays` throws “not implemented”
 
-[Unreleased]: https://github.com/leemr/daymath/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/leemr/daymath/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/leemr/daymath/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/leemr/daymath/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/leemr/daymath/compare/v0.2.3...v0.3.0
 [0.2.3]: https://github.com/leemr/daymath/compare/v0.2.2...v0.2.3

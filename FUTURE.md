@@ -2,7 +2,7 @@
 
 Checked-in backlog. Session handoff: local `todo.grok` (gitignored).
 
-**Live now:** `daymath@0.4.0` on npmjs · `@leemr/daymath@0.4.0` on GitHub Packages · https://leemr.github.io/daymath/
+**Live now:** `daymath@0.5.0` on npmjs · `@leemr/daymath@0.5.0` on GitHub Packages · https://leemr.github.io/daymath/
 
 ---
 
@@ -14,10 +14,8 @@ start until that call is answered.
 
 | # | Name | What it does | Blocked by | Version |
 |---|---|---|---|---|
-| — | **Bundle rig** | the size gate and the Intl harness | — | no release |
-| — | **Calendars** | accepts a calendar that only relabels the year | **done**, awaiting 0.5.0 | 0.5.0 |
 | 1 | **fns port** | rewrite the internal `Temporal.` call sites onto `fns` | Orphan days | 0.6.0 |
-| 2 | **Size badge** | `docs/size.json` and a shields endpoint, so history lives in git | Bundle rig | no release |
+| 2 | **Size badge** | `docs/size.json` and a shields endpoint, so history lives in git | — | no release |
 | 3 | **Business days** | business-day helpers and the ISO week suite | — | 0.7.0 |
 | 4 | **npm provenance** | publish from Actions with OIDC instead of a laptop token | — | mechanics |
 | 5 | **JSDoc examples** | deeper `@example` on the hot exports | — | patch |
@@ -51,9 +49,7 @@ green.
 
 | Name | The question | What the answer costs |
 |---|---|---|
-| **Orphan days** | 5 historical days answer differently if `day()` reads the date part of the string | buys 1.9 kB gzip; changes 0.4.0 behaviour |
-| ~~**Mixed pair**~~ | ~~`differenceInDays` throws `Mismatched calendars`~~ | **answered:** measurement normalises, so it returns 29 |
-| ~~**Japanese era**~~ | ~~`.eraYear` reads 8 for Reiwa 8~~ | **answered:** Temporal's `.year` is ISO-aligned, so the offset is 0 and daymath reads no era |
+| **Orphan days** | 5 historical days answer differently if `day()` reads the date part of the string | buys 1.9 kB gzip; changes 0.5.0 behaviour |
 | **setDate rolling** | daymath constrains, date-fns rolls | blocks nothing; see API / product below |
 
 ### Not a pull request
@@ -147,58 +143,15 @@ made inside one run is evidence.
 
   **Open product call:** on those five days Temporal answers the next day, and the date part
   answers the day the caller wrote. daymath is a day library and never resolves an instant, so
-  the date part is arguably the more honest answer — but it is a behaviour change from 0.4.0.
-- The calendars decision has a byte price too. See the `[u-ca=]` item below.
+  the date part is arguably the more honest answer — but it is a behaviour change from 0.5.0.
+- **The calendars already spent 4,227 B gzip, +20.6%**, because `temporal-polyfill/full` replaced
+  the base build in 0.5.0. That is in every shape reaching `index.js`, so it is in the baseline
+  the rig now compares against, not a future cost.
 - Measure in a real app (e.g. itrvl) before rewriting  
 
 ---
 
 ## API / product (optional)
-
-- ~~**Accept `buddhist` and `roc` calendars**~~ — **DONE, awaiting the 0.5.0 release.** It landed
-  wider than planned: `japanese` and `gregory` pass the same rule, so four calendars are accepted,
-  not two.
-
-  **The rule is measured, and nothing in the code names a calendar.** `calendarRule` in `index.js`
-  requires two conditions on nine probe dates spanning 1900 to 2100: the month and day must equal
-  the ISO fields, and the year offset must be constant. A calendar CLDR adds later is admitted or
-  refused by the same measurement, with no code change.
-
-  | accepted | offset | refused | why |
-  |---|---|---|---|
-  | `buddhist` | +543 | `hebrew` `indian` `persian` `islamic-*` | renumber month and day |
-  | `roc` | −1911 | `chinese` `dangi` | lunisolar, 13 months |
-  | `japanese` | 0 | `coptic` `ethiopic` `ethioaa` | 13 months |
-  | `gregory` | 0 | | |
-
-  **Three things measurement settled, each different from what was written here before:**
-
-  1. **A month *count* is the wrong test.** `hebrew` has 12 months in 2025 and 2026 and 13 in 2024
-     and 2027, because it is lunisolar. Only the field comparison is right in every year.
-  2. **The rule must read Temporal, not `Intl`.** `Intl` reports the *era* year — Reiwa 8, and
-     B.R.O.C. 12 for `roc` in 1900 — so an offset test over `Intl` rejects `japanese` and `roc`.
-     Temporal reports a continuous year for both, so both are pure labels: its `roc` year for 1900
-     is `-11`, not "12 before". Temporal is what daymath answers with, so Temporal is what the rule
-     asks.
-  3. **`japanese` needed no special case at all.** Its `.year` is ISO-aligned across every era
-     boundary, its month and day are ISO, and the only fields that differ are `.era` and
-     `.eraYear`, which daymath does not expose. It is the safest of the four.
-
-  **The cost was a dependency change, not code.** The base `temporal-polyfill` cannot build these
-  calendars where the runtime has no native Temporal; it throws
-  `Unknown calendar buddhist; might need temporal-polyfill/full`. Node 20 and bun are on that path
-  in CI. `temporal-polyfill/full` costs **+4,227 B gzip, +20.6%**, and the size gate refused to
-  pass until the baseline was re-recorded on purpose. That buys identical answers on every runtime,
-  not new capability.
-
-  **The two open questions are answered.** A mixed pair measures rather than throwing, because a
-  day is the same day whatever its year is labelled; `differenceInDays` and `isEqual` normalise
-  both operands. The object / string asymmetry belongs to Temporal and daymath inherits it, because
-  daymath never takes the fields form.
-
-  **`day()` is the normaliser and DROPS the annotation**, so it always returns a plain ISO day.
-  Every other export carries it. The `@returns` promise of `YYYY-MM-DD` was already loose anyway,
-  because `day('+010000-01-01')` returns an expanded year.
 
 - **`setDate` / `setYear` overflow — the last undecided public behaviour.** daymath constrains
   inside the month; date-fns rolls over. `setDate('2026-02-01', 31)` answers `2026-02-28` here and
@@ -218,10 +171,12 @@ made inside one run is evidence.
   argument is in `scripts/differential.mjs` under `setDate` and `setYear`.
 - Business days, ISO week suite  
 - Rich display / i18n — **out of scope** (Temporal+Intl or date-fns TZ formatters)  
-- ~~Next **semver: 0.4.0**~~ — **shipped 2026-08-08.** `day()` was new API surface, and the Node
-  floor moved to 20.19. See the Order section for what each remaining row costs in semver.  
+- See the Order section for what each remaining row costs in semver.  
 
-**Done:** 0.2 calendar surface; expanded ISO years; `isValid(Date)` throws; `isSameDay` = `isEqual`; date-fns index traps (0-based month, Sunday week, etc.)
+**Done:** 0.2 calendar surface; expanded ISO years; `isValid(Date)` throws; `isSameDay` = `isEqual`;
+date-fns index traps (0-based month, Sunday week, etc.); **0.4.0** `day()` and the Node 20.19 floor;
+**0.5.0** the four year-relabel calendars, the measured rule, and `temporal-polyfill/full`. The
+calendar surface is documented in `README.md`; the measurement is in `CHANGELOG.md` at `[0.5.0]`.
 
 ---
 
