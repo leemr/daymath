@@ -7,6 +7,74 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+daymath claims to run everywhere. This makes that testable, and fixes what testing found.
+
+### Fixed
+
+- **`day()` no longer reads an ISO timestamp string as a time zone and answers today.** `day('1999-01-01T00:00:00Z')` returned the current day, silently, on every runtime. A lone string was treated as a zone unless it had ISO **day** shape, and a timestamp does not — so it went into the zone slot, where Temporal's zone grammar accepted it, because that grammar reads the zone out of a whole timestamp. It is the worst input class to lose: an ISO timestamp string is what `JSON.parse`, a REST response and most SQL drivers hand you, and the README's own `day(row.createdAt)` example hits it whenever the row arrives as a string rather than a `Date`. The answer also changed at every UTC midnight, so a test written one day passed and the same code answered differently the next. A lone string now takes one of three roles in a fixed order — a day, then an instant, then a zone — and the zone test is by **shape**, so a timestamp can never take the zone role.
+- **`day()` threw away a zone the string named.** `day('2026-08-08T20:00:00-04:00[America/New_York]')` answered `'2026-08-09'` where the caller's own `ZonedDateTime.toPlainDate()` said `'2026-08-08'`. daymath read the instant, discarded the annotation and applied its UTC default — over a zone the caller had stated. Plain `toString()`, `toJSON()` and `JSON.stringify` all write that spelling, so a browser posting its own timestamp had its date moved by a day. The critical form `[!America/New_York]` was ignored too, which RFC 9557 forbids outright. A bracketed zone is now honoured: the string keeps its own civil day. The bracket is the signal, because Temporal itself refuses to build a `ZonedDateTime` from a bare offset. Passing `tz` as well throws `two time zones`, matching `day('utc', 'Asia/Tokyo')`. Naming a zone and resolving as one are separate questions, so a string that names one and fails — an offset its own zone contradicts, or a misspelled name — is an error rather than a silent fall back to UTC. This also settles a narrower rule: daymath refuses a timestamp only when it would have to *pick* a zone, so `'2026-08-08T12:00'` is still refused and `'2026-08-08T12:00[America/New_York]'` is now accepted.
+- **Two annotation patterns were quadratic, and CodeQL found them.** `js/polynomial-redos` flagged three sites, and timing confirmed all three: `'[u-ca='.repeat(64000)` cost 9.0 seconds and `'[!'.repeat(64000)` cost 6.8 seconds, each growing with the square of the input. The calendar pattern needed `^(.*)\[…\]$` because an annotation can sit behind another one, and that `.*` backtracks; the zone pattern was unanchored, which is the same defect an earlier commit had removed from the calendar pattern. Both questions are now answered with `indexOf` and `lastIndexOf` in one pass. 256,000 characters now cost 0.91 ms. Worth recording plainly: fifteen review agents had measured the *previous* revision of these patterns and reported them linear, so a static reader of the pattern caught what timing a stale version could not.
+- **An ISO time-only string still took the zone role.** The first shape test read "a zone starts with a letter", and an ISO time-of-day starts with `T`. So `day('T12:00:00Z')` answered today on native Temporal and threw on `temporal-polyfill` — the same defect, narrowed rather than closed. The shape test is now an IANA name, which carries no `:`, or a bare offset. The compact spelling `'T120000Z'` has no `:` to catch it, so a `(?![Tt]\d)` guard covers that one. Verified against every zone this runtime knows: 0 of 418 rejected, plus the aliases `UTC`, `GMT`, `US/Eastern`, `Asia/Calcutta` and `Etc/GMT+5`.
+- **A non-ISO calendar is now refused on the string, before any parse.** `day()` adjudicated the calendar per path, so a `[u-ca=buddhist]` sitting behind a zone bracket missed every check and came back out as `'2026-08-08[u-ca=buddhist]'` — a value `isValid` answers `false` for and every other export throws on. Worse, it split by implementation: native Temporal builds that `ZonedDateTime` and `temporal-polyfill` refuses to, so the CI matrix disagreed with itself. One check now runs on the string first, before any parse, so all three runtimes give the same message. The rule it settles is narrower than "refuse the annotation everywhere": a calendar is refused **where it is applied**. With a zone bracket it is applied, because the fields get renumbered. Without one, `'2026-08-08T20:00:00Z[u-ca=buddhist]'` names an `Instant`, which has no year, month or day for a calendar to renumber — so the annotation is inert and the day is answered.
+- **`day()` alone refused `[u-ca=iso8601]`.** The other 68 exports accepted it, so `isValid` called the string a valid day while `day()` called it neither a moment nor a zone. `day()` asked "is this a day?" with its own copy of the test. Both now call one predicate, `bareDay`, which is the only place that question is answered. Calendar names also compare case-insensitively now, as BCP-47 requires, so `[u-ca=ISO8601]` no longer draws an error naming the ISO calendar as the reason to refuse the ISO calendar.
+- **A non-string `tz` threw someone else's error.** `day(0, Object.create(null))` reported `Cannot convert object to primitive value`, because the shape test coerces its argument and sits outside the guard. A `typeof` test now runs first, so the message is daymath's own again.
+- **`day()` answered differently on different Temporal implementations.** `day('2026-08-06', '2026-08-08T25:00:00Z')` threw on native Temporal and returned `'2026-08-06'` on `temporal-polyfill`: hour 25 is a time zone to one and not to the other. The zone argument is now checked by shape before any implementation sees it, so every runtime gives the same answer. The cross-runtime battery found this on its first run against the new malformed-string probes.
+- **A `Temporal.PlainDate` from another implementation is no longer rejected.** `toPlainDate` tested `value instanceof Temporal.PlainDate`, which recognises one class. A date from native Temporal, or from a second copy of `temporal-polyfill` in the same dependency tree, threw `TypeError: date must be ISO 8601 day string or Temporal.PlainDate` — and `isValid` answered `false` for a perfectly valid date. Every input now reduces to its ISO day string first, so daymath owns the instance it works with. The common source of one of these is `Temporal.Now.plainDateISO()`, since daymath has no `today()`.
+- **A non-interval argument now names the interval.** `eachDayOfInterval(new Date())`, `…([])` and `…(plainDate)` all reported `start must be ISO 8601 day string`, blaming a property the caller never passed, because the guard was a bare `typeof x === 'object'`. All six interval-reading exports now say `interval must be { start, end }`.
+
+### Changed
+
+- **Error messages no longer quote Temporal's own text.** `daymath: addDays could not produce a valid date (Out-of-bounds date)` becomes `daymath: addDays could not produce a valid date`. Implementations word the same failure differently — native V8 says `Temporal error: epoch days exceed maximum range.` — so the quoted text made daymath's message vary by runtime. The original error is still on `cause`. It was the only remaining difference across implementations, in 612 calls of a 46,512-call sweep at the time. It is now 0.
+- **A non-ISO calendar is refused rather than reinterpreted.** `2026-01-31[u-ca=buddhist]` is the same day as `2026-01-31`, but Thai Buddhist years run 543 ahead, so it is year 2569. Accepting it would make `getYear` answer `2026` where the caller's own object says `2569`. Calendars like `hebrew` and `chinese` renumber the month and day as well. Strings carrying an annotation were already refused; objects now match. A caller who means the ISO day can convert deliberately with `withCalendar('iso8601')`.
+- **A non-ISO calendar now reports itself, instead of looking malformed.** `2026-01-31[u-ca=buddhist]` failed the ISO day-shape check and answered `date must be ISO 8601 day YYYY-MM-DD or ±YYYYYY-MM-DD`. The string is well formed; it is a different calendar. It now answers `date must use the ISO 8601 calendar, not "buddhist" (convert with withCalendar('iso8601'))`, which names the cause and the way through. The critical form `[!u-ca=…]` is refused the same way.
+- **`[u-ca=iso8601]` is now accepted, and dropped.** Temporal writes that annotation itself for `toString({ calendarName: 'always' })` — and `[!u-ca=iso8601]` for `'critical'` — so a caller round-tripping their own `PlainDate` through a string was refused. The annotation names the very calendar daymath reads, so refusing it was arbitrary. Every other calendar is still refused.
+- **One tagline ending, on every surface.** The five human-facing taglines all made the same promise in five different spellings — `No time zones.` alone in the npm description, `No Date / time zones.` in the module header, lower-case and comma-separated on the social card. They now end `No Date. No time zones.` The npm description gained `No Date`, which it was the only surface to omit. The claim is about daymath's *values*: none holds a `Date` or a zone. `day()` converts at the boundary and stores neither. `llms.txt` keeps the longer wording, because a model reading it gets no tagline and can use the explanation.
+
+### Added
+
+- **`day(moment?, tz?)`** — the way in. It answers the calendar day of a moment, in a zone.
+
+  ```js
+  day()                                  // '2026-08-08'  now, UTC
+  day('Asia/Tokyo')                      // now, named zone
+  day(row.createdAt)                     // a Date, UTC
+  day(row.createdAt, 'America/New_York') // same instant, the evening before
+  day(1761616161771)                     // epoch milliseconds
+  day('2026-05-05')                      // already a day
+  ```
+
+  Both defaults are stated rather than assumed: the moment is now, the zone is UTC. A number is epoch **milliseconds**, exactly as `new Date(n)` reads it, truncated the same way, so a fractional value is not an error. A day carries no time, so a zone does not apply to one — but the zone is still validated, so a typo fails whatever the moment is. `'11/12/2026'` is refused, because nobody can tell November from December in it.
+
+  An ISO timestamp carrying `Z` or an offset names an exact instant, so `day()` reads it as a moment: `day('1999-01-01T00:00:00Z')` is `'1999-01-01'`. One carrying neither is refused — `'2026-08-08T12:00'` names no instant, and daymath will not pick a zone on your behalf.
+
+  This is the only export that reads a clock, and the only door a `Date` may enter by. Nothing carries a zone past it, and nothing returns a `Date`. Give it a moment and it is a pure function, which is how the cross-runtime battery covers it.
+
+  Two probe lists now run through the cross-runtime battery. `JUNK` holds **21** strings that must be refused, in three argument slots — first, second, and inside an interval. It carries the SQL spelling `'2026-08-08 12:00:00'`, a bare `'12:30:00'`, the ISO time-only `'T12:00:00Z'` and its compact `'T120000Z'`, hour 25, month 13, an offset that contradicts its own zone, a misspelled zone, and four calendar annotations. `INSTANTS` holds **11** timestamps that must be accepted, each in the first slot against four zones, including both range edges, a bracketed zone and its critical spelling.
+
+  Every export throws on every `JUNK` entry where it reads the value. In the second slot **28** exports ignore the extra argument and answer normally, which the battery records either way, and `isValid` answers `false` by contract.
+
+  The battery previously passed only `Date` objects and numbers, so no probe ever fed a bad *string*, which is how the `day()` defect above survived 100% coverage, three harnesses and three runtimes.
+
+  Two things it deliberately does not do. It does not guess whether a number is seconds or milliseconds: 13 digits means milliseconds for 2001–2286 and seconds for the year 275760, and both are inside the supported range, so no digit or magnitude rule can separate them. It does not default the zone to the system zone, because that answer changes by region.
+
+- **`npm run test:runtimes`** — a cross-runtime baseline over every export, hashed per export. The call count lives in `scripts/cross-runtime.baseline.json` rather than in prose, so it cannot go stale. CI runs it on Node 20–26, on **Deno**, which ships native Temporal, and on **Bun**. It is the only check that can see the polyfill and the standard disagree.
+- Tests for each fix, including a law that a foreign `PlainDate` must be indistinguishable from its ISO day string across every export, enumerated from the module rather than a hand-written list.
+- A bundle-size badge.
+- **Lint, format and type gates**, all three run in CI on the primary Node version:
+  `npm run lint` (oxlint), `npm run format:check` (oxfmt) and `npm run typecheck` (tsc).
+  The configs are `oxlint.jsonc`, `oxfmt.json` and `tsconfig.json` — deliberately not dotfiles.
+
+  The type gate is the one that earned its place immediately. `tsc --checkJs` reads the JSDoc in
+  `index.js`, so it covers the implementation and not only the declarations, and it found a
+  wrong type on a public option: `weekStartsOnFrom` was annotated `@returns {0|1|2|3|4|5|6}`
+  while returning `7`, the default, since 0.3.0 widened the range. Runtime was always correct.
+  100% coverage, the differential harness and the cross-runtime baseline all missed it.
+
+### Removed
+
+- **Node 18.** It went end-of-life in April 2025. `engines` is now `>=20.19.0 <21 || >=22.12.0`, which states the real constraint: `require('daymath')` needs Node's `require(esm)`, which landed in 20.19 and 22.12. The range closes the gap at 22.0–22.11 rather than rounding it away. Dropping 18 also allows `Array#toSorted`, which is ES2023.
+- `globalThis.Temporal ?? TemporalPolyfill`. `temporal-polyfill` already resolves native itself, so this duplicated the check and hid where it happens.
+
 ## [0.3.0] — 2026-08-07
 
 Index bases and the unit counts change, so this release is `0.3.0`. It also carries

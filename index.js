@@ -1,7 +1,8 @@
-/** daymath — calendar date math (ISO 8601 day). date-fns-shaped. No Date / time zones. */
-import { Temporal as TemporalPolyfill } from 'temporal-polyfill'
-
-const Temporal = globalThis.Temporal ?? TemporalPolyfill
+/** daymath — calendar date math (ISO 8601 day). date-fns-shaped. No Date. No time zones. */
+// temporal-polyfill already resolves this: its entry is `globalThis.Temporal ||
+// bundled`, so a runtime with native Temporal gets native. Re-reading
+// globalThis here only duplicated that check and hid where it happens.
+import { Temporal } from 'temporal-polyfill'
 
 /**
  * ISO 8601 calendar day string:
@@ -13,8 +14,73 @@ const Temporal = globalThis.Temporal ?? TemporalPolyfill
  * the epoch). Outside it, Temporal throws and we re-throw with the `daymath:`
  * prefix.
  */
-const ISO_DAY =
-  /^(?:[+-]\d{6}|\d{4})-\d{2}-\d{2}$/
+const ISO_DAY = /^(?:[+-]\d{6}|\d{4})-\d{2}-\d{2}$/u
+
+/**
+ * Temporal's calendar annotation, `[u-ca=…]` or the critical `[!u-ca=…]`.
+ * Returns what it is attached to, and the calendar it names, or `null`.
+ *
+ * String operations, not a regex, and the reason is measured. The annotation can
+ * sit behind another one — `'…[America/New_York][u-ca=buddhist]'` — so the head
+ * may itself contain `[`. A pattern that allows that needs `^(.*)\[…\]$`, whose
+ * `.*` backtracks: `'[u-ca='.repeat(64000)` cost 9.0 s, growing with the square
+ * of the input. `lastIndexOf` answers the same question in one pass. CodeQL
+ * `js/polynomial-redos` caught the regex form; timing it confirmed the report.
+ * @param {string} text
+ * @returns {{ head: string, calendar: string } | null}
+ */
+function calendarAnnotation(text) {
+  if (!text.endsWith(']')) return null
+  const open = text.lastIndexOf('[')
+  if (open === -1) return null
+  const inner = text.slice(open + 1, -1)
+  const body = inner.startsWith('!') ? inner.slice(1) : inner
+  if (!body.startsWith('u-ca=')) return null
+  const calendar = body.slice(5)
+  // A `]` inside means the brackets do not nest as they appear, so this is not
+  // an annotation. `'[u-ca=[u-ca=[u-ca=x]]]'` reads as the calendar `x]]` here
+  // and as a malformed day everywhere else, which is what it is.
+  if (calendar === '' || calendar.includes(']')) return null
+  return { head: text.slice(0, open), calendar }
+}
+
+/**
+ * True when the string carries a time-zone annotation, `[Zone]` or `[!Zone]`.
+ * It is the one annotation with no `=`, which separates it from `[u-ca=…]`, and
+ * Temporal writes it first, so only the leading bracket can be one.
+ *
+ * Asking "does the string name a zone?" is a different question from "does it
+ * resolve?". A string can name one and still fail: an offset that disagrees with
+ * the zone, or a misspelled name. Both must be errors, never a silent fallback
+ * to the UTC default.
+ *
+ * String operations again. An unanchored `/\[!?[^\]=]+\]/` restarts at every
+ * position: `'[!'.repeat(64000)` cost 6.8 s, and it is the same defect an
+ * earlier commit removed from the calendar pattern.
+ * @param {string} text
+ */
+function hasZoneAnnotation(text) {
+  const open = text.indexOf('[')
+  if (open === -1) return false
+  const close = text.indexOf(']', open)
+  if (close === -1) return false
+  return !text.slice(open + 1, close).includes('=')
+}
+
+/**
+ * A time zone, by shape: an IANA name, or a bare offset.
+ *
+ * A name is letter-led, slash-separated segments of letters, digits, `_`, `+`,
+ * `-` and `.`. It carries no `:`, which is what keeps an ISO time out. The
+ * `(?![Tt]\d)` guard rejects the compact spelling `T120000Z`, which has no `:`
+ * to catch it. Both matter: `T12:00:00Z` is a zone to native Temporal and not
+ * to temporal-polyfill, so letting either through splits the answer by runtime.
+ *
+ * Verified against every zone this runtime knows: 0 of 418 rejected, plus the
+ * aliases `UTC`, `GMT`, `US/Eastern`, `Asia/Calcutta` and `Etc/GMT+5`.
+ */
+const ZONE_LIKE =
+  /^(?:(?![Tt]\d)[A-Za-z][A-Za-z0-9_+.-]*(?:\/[A-Za-z0-9_+.-]+)*|[+-]\d{2}(?::?\d{2})?)$/u
 
 /** @typedef {string | Temporal.PlainDate} DayInput */
 /**
@@ -32,7 +98,74 @@ const ISO_DAY =
 // ─── core conversion ───────────────────────────────────────────────
 
 /**
+ * The bare ISO day inside a string, or `null` if there is not one.
+ *
+ * An annotation is dropped, not judged: `assertIsoCalendar` owns that rule and
+ * runs before both callers, so by here the only calendar left is ISO. Temporal
+ * writes `[u-ca=iso8601]` itself for `toString({ calendarName: 'always' })`, and
+ * it names the very calendar daymath reads, so refusing a caller's own
+ * round-trip would be arbitrary.
+ *
+ * One predicate, because `toPlainDate` and `day()` both ask this question. They
+ * asked it separately once, and day() alone then refused a string that every
+ * other export accepted.
+ * @param {string} text
+ * @returns {string | null}
+ */
+function bareDay(text) {
+  const annotated = calendarAnnotation(text)
+  const bare = annotated ? annotated.head : text
+  return ISO_DAY.test(bare) ? bare : null
+}
+
+/**
+ * Refuse a non-ISO calendar, wherever the annotation is attached.
+ *
+ * Checked on the *string*, before any parse. Implementations disagree past this
+ * point: native Temporal builds a `[u-ca=buddhist]` ZonedDateTime and the
+ * polyfill refuses to, so parsing first made the error depend on the runtime.
+ * @param {string} text
+ * @param {string} label
+ */
+function assertIsoCalendar(text, label) {
+  const annotated = calendarAnnotation(text)
+  if (annotated && annotated.calendar.toLowerCase() !== 'iso8601') {
+    throw new RangeError(
+      `daymath: ${label} must use the ISO 8601 calendar, not ${JSON.stringify(annotated.calendar)} (convert with withCalendar('iso8601'))`,
+    )
+  }
+}
+
+/**
+ * True for a `Temporal.PlainDate` from *any* implementation: native, the
+ * bundled polyfill, or a second copy of it in the same dependency tree.
+ * `instanceof` recognises only one of those. Every Temporal puts this tag on
+ * `PlainDate.prototype` as a non-writable property, so it is the portable brand.
+ * @param {unknown} value
+ * @returns {value is Temporal.PlainDate} a predicate, so callers narrow
+ */
+function isPlainDate(value) {
+  return Object.prototype.toString.call(value) === '[object Temporal.PlainDate]'
+}
+
+/**
  * Reject Date and non-calendar values. Accept ISO day string or PlainDate.
+ *
+ * A PlainDate becomes its ISO day string first, so every input reaches one
+ * validation path and daymath owns the resulting instance.
+ *
+ * A non-ISO calendar is refused rather than reinterpreted. `toString()` writes
+ * the ISO date then an optional `[u-ca=…]`, so the *day* would survive — but
+ * the field numbers would not. Thai Buddhist years run 543 ahead, so
+ * `2026-01-31[u-ca=buddhist]` is year 2569, and `getYear` would answer `2026`
+ * where the caller's own object says `2569`. A string carrying the annotation is
+ * refused for the same reason, and the error names both the calendar it found
+ * and the way through, `withCalendar('iso8601')`.
+ *
+ * `[u-ca=iso8601]` is the exception: it is accepted and dropped. Temporal writes
+ * it itself for `toString({ calendarName: 'always' })`, and it names the very
+ * calendar daymath reads, so refusing a caller's own round-trip would be
+ * arbitrary.
  * @param {unknown} value
  * @param {string} label
  * @returns {Temporal.PlainDate}
@@ -43,26 +176,28 @@ function toPlainDate(value, label = 'date') {
       `daymath: Date is not allowed for ${label} (pass ISO 8601 day string)`,
     )
   }
-  if (typeof value === 'string') {
-    if (!ISO_DAY.test(value)) {
-      throw new RangeError(
-        `daymath: ${label} must be ISO 8601 day YYYY-MM-DD or ±YYYYYY-MM-DD (got ${JSON.stringify(value)})`,
-      )
-    }
-    try {
-      return Temporal.PlainDate.from(value)
-    } catch (err) {
-      throw new RangeError(`daymath: invalid ${label} ${JSON.stringify(value)}`, {
-        cause: err,
-      })
-    }
+  // Named `text`, not `day`: a local `day` would shadow the exported day().
+  const text = isPlainDate(value) ? value.toString() : value
+  if (typeof text !== 'string') {
+    throw new TypeError(
+      `daymath: ${label} must be ISO 8601 day string or Temporal.PlainDate`,
+    )
   }
-  if (value instanceof Temporal.PlainDate) {
-    return value
+  // Before the shape check: an annotated day is well formed, not malformed.
+  assertIsoCalendar(text, label)
+  const bare = bareDay(text)
+  if (bare === null) {
+    throw new RangeError(
+      `daymath: ${label} must be ISO 8601 day YYYY-MM-DD or ±YYYYYY-MM-DD (got ${JSON.stringify(text)})`,
+    )
   }
-  throw new TypeError(
-    `daymath: ${label} must be ISO 8601 day string or Temporal.PlainDate`,
-  )
+  try {
+    return Temporal.PlainDate.from(bare)
+  } catch (err) {
+    throw new RangeError(`daymath: invalid ${label} ${JSON.stringify(text)}`, {
+      cause: err,
+    })
+  }
 }
 
 /** @param {Temporal.PlainDate} plain @returns {string} */
@@ -82,9 +217,14 @@ function assertFiniteNumber(n, label) {
 
 /**
  * Run a Temporal op and keep the `daymath:` message contract when it fails.
- * Temporal throws bare `Out-of-bounds date` / `Non-positive day`; we prefix and
- * keep the original text plus `cause`. Covers both a result past the range and
- * an argument Temporal refuses outright, hence the neutral wording.
+ * Covers both a result past the range and an argument Temporal refuses
+ * outright, hence the neutral wording.
+ *
+ * The message carries no Temporal text. Implementations word the same failure
+ * differently — the polyfill says `Out-of-bounds date` where native V8 says
+ * `Temporal error: epoch days exceed maximum range.` — so quoting it made
+ * daymath's own message vary by runtime. `cause` still holds the original
+ * error, which is where the detail belongs.
  * @template T
  * @param {string} label
  * @param {() => T} op
@@ -94,10 +234,9 @@ function guardRange(label, op) {
   try {
     return op()
   } catch (err) {
-    throw new RangeError(
-      `daymath: ${label} could not produce a valid date (${/** @type {Error} */ (err).message})`,
-      { cause: err },
-    )
+    throw new RangeError(`daymath: ${label} could not produce a valid date`, {
+      cause: err,
+    })
   }
 }
 
@@ -123,7 +262,7 @@ function assertNonEmptyDates(dates) {
 
 /**
  * @param {WeekOptions} [options]
- * @returns {0|1|2|3|4|5|6}
+ * @returns {0|1|2|3|4|5|6|7} 7 is the default, so 0-6 was never the real range
  */
 function weekStartsOnFrom(options) {
   const w = options?.weekStartsOn ?? 7
@@ -138,12 +277,226 @@ function weekStartsOnFrom(options) {
  * @returns {{ start: Temporal.PlainDate, end: Temporal.PlainDate }}
  */
 function toInterval(interval) {
-  if (interval == null || typeof interval !== 'object') {
+  // `typeof x === 'object'` alone let a Date, an array or a PlainDate through,
+  // and the failure then surfaced as "start must be ISO 8601 day string" —
+  // naming a property the caller never meant to pass.
+  if (
+    interval === null || // typeof null is 'object', so it needs its own test
+    typeof interval !== 'object' || // and this already catches undefined
+    !('start' in interval) ||
+    !('end' in interval)
+  ) {
     throw new TypeError('daymath: interval must be { start, end }')
   }
   const start = toPlainDate(/** @type {Interval} */ (interval).start, 'start')
   const end = toPlainDate(/** @type {Interval} */ (interval).end, 'end')
   return { start, end }
+}
+
+// ─── the clock ─────────────────────────────────────────────────────
+
+/**
+ * The calendar day of a moment, in a zone. The way in.
+ *
+ * Both arguments have a **stated** default: the moment is now, and the zone is
+ * UTC. A default that is written down is not a guess; a default that is assumed
+ * is. UTC is still not your day for part of every day — it runs ahead of
+ * America/New_York for 16.7% of the day, and behind Asia/Tokyo for 37.5% — so
+ * name your zone when that matters.
+ *
+ * `moment` accepts what the world actually hands you:
+ * - a `Date`, the only carrier of an instant JavaScript has
+ * - a number, read as **epoch milliseconds**, exactly as `new Date(n)` reads it,
+ *   truncated the same way, so a fractional value is not an error
+ * - an ISO 8601 day string, or a `Temporal.PlainDate` from any implementation,
+ *   both of which are already a day
+ * - an ISO 8601 timestamp carrying `Z` or an offset, which names an exact
+ *   instant, so there is nothing left to guess
+ * - a string carrying a `[Zone]` annotation, which names its own zone, so it
+ *   answers its own civil day and the `tz` default never applies
+ *
+ * `'11/12/2026'` is refused. Nobody can tell November from December in it.
+ * `'2026-08-08T12:00'` is refused too: no offset and no zone, so daymath would
+ * have to pick one, and it will not pick on the caller's behalf. Name the zone
+ * — `'2026-08-08T12:00[America/New_York]'` — and it is accepted.
+ *
+ * A lone string takes one of four roles, decided in this order: a day, then a
+ * zoned time, then an instant, then a zone. The zone test is by **shape**, and
+ * the shape is on `ZONE_LIKE`. Temporal's own zone grammar cannot decide the role, because it
+ * accepts a whole timestamp and reads the zone out of it, so
+ * `day('1999-01-01T00:00:00Z')` would answer today. The grammar also differs
+ * between implementations: `'2026-08-08T25:00:00Z'` and `'T12:00:00Z'` are both
+ * zones to native Temporal and neither is one to `temporal-polyfill`. Shape
+ * settles the role and the runtime split together.
+ *
+ * With `day()` this is the only export that reads a clock, so the only one
+ * whose answer depends on when you call it. Give it a moment and it becomes a
+ * pure function, which is how the cross-runtime battery covers it.
+ *
+ * @param {Date | number | DayInput | null} [moment] instant, epoch ms, day, or a zone
+ * @param {string} [tz] IANA time zone id, e.g. `'utc'`, `'Asia/Tokyo'`
+ * @returns {string} `YYYY-MM-DD`
+ * @throws {TypeError} If `moment` is not one of the accepted shapes
+ * @throws {RangeError} On an Invalid Date, a non-finite number, or an unknown zone
+ * @example day()                              // '2026-08-08'  now, UTC
+ * @example day('Asia/Tokyo')                  // '2026-08-09'  today in Tokyo
+ * @example day(row.createdAt)                 // '2026-08-07'  a Date, UTC
+ * @example day(row.createdAt, 'America/New_York') // '2026-08-06'
+ * @example day(1761616161771)                 // '2025-10-28'  epoch ms
+ * @example day('1999-01-01T00:00:00Z')        // '1999-01-01'  an ISO timestamp
+ * @example day(zdt.toString())                // the zone in the string wins
+ * @example addDays(day(), 2)                  // '2026-08-10'
+ */
+export function day(moment, tz) {
+  // Already a day, in every accepted spelling. `bareDay` is the same predicate
+  // toPlainDate uses, so day() cannot drift from the other 68 exports.
+  const isDay =
+    isPlainDate(moment) || (typeof moment === 'string' && bareDay(moment) !== null)
+  const isMoment = isDay || moment instanceof Date || typeof moment === 'number'
+
+  let zone = tz
+  /** @type {Temporal.Instant | undefined} */
+  let instant
+  /** @type {Temporal.ZonedDateTime | undefined} */
+  let zoned
+  if (!isMoment && moment !== undefined && moment !== null) {
+    if (typeof moment !== 'string') {
+      throw new TypeError(
+        'daymath: day() takes a Date, epoch milliseconds, or an ISO 8601 day',
+      )
+    }
+    // A `[Zone]` annotation makes the string a ZonedDateTime, and Temporal will
+    // not build one without it: a bare offset is refused. So the bracket is the
+    // caller naming a zone, and the string carries its own civil day. Reading
+    // the instant instead and applying UTC would move a browser's date by one.
+    //
+    // Naming a zone and resolving as one are different questions, so the
+    // annotation is detected first. A string can name a zone and still fail:
+    // `'…-05:00[America/New_York]'` has an offset the zone contradicts, and
+    // `'…[Asia/Tokoy]'` is a typo. Falling back to the instant would answer a
+    // UTC day for both, silently, which is the defect this branch exists to fix.
+    if (hasZoneAnnotation(moment)) {
+      // A calendar is refused only where it is applied. With a zone bracket it
+      // is: the fields get renumbered, and `toPlainDate()` carries the
+      // annotation into daymath's own output. Refused on the string, before the
+      // parse, because native Temporal builds a `[u-ca=buddhist]` ZonedDateTime
+      // and the polyfill refuses to — judging after the parse would make the
+      // message depend on the runtime.
+      assertIsoCalendar(moment, 'date')
+      if (tz !== undefined && tz !== null) {
+        throw new TypeError(
+          `daymath: day() got two time zones, ${JSON.stringify(moment)} and ${JSON.stringify(tz)}`,
+        )
+      }
+      try {
+        zoned = Temporal.ZonedDateTime.from(moment)
+      } catch (err) {
+        throw new RangeError(
+          `daymath: day() could not read ${JSON.stringify(moment)} in the time zone it names`,
+          { cause: err },
+        )
+      }
+    } else {
+      try {
+        // A timestamp carrying `Z` or an offset names an exact instant, so it
+        // reads as a moment. Temporal's own grammar is the definition of that.
+        //
+        // A calendar annotation here is inert and is ignored. An Instant has no
+        // year, month or day for a calendar to renumber, and without a zone
+        // bracket Temporal will not build anything that does. Refusing it would
+        // reject a right answer for a reason that cannot apply.
+        instant = Temporal.Instant.from(moment)
+      } catch {
+        // Not a moment, so the string must be a zone — decided by shape, before
+        // Temporal sees it. Temporal's zone grammar also accepts a whole
+        // timestamp and pulls the zone out of it, so letting it decide the role
+        // would read a date as a zone and silently answer today.
+        if (!ZONE_LIKE.test(moment)) {
+          throw new RangeError(
+            `daymath: day() got ${JSON.stringify(moment)}, which is neither a moment nor a time zone`,
+          )
+        }
+        if (tz !== undefined && tz !== null) {
+          throw new TypeError(
+            `daymath: day() got two time zones, ${JSON.stringify(moment)} and ${JSON.stringify(tz)}`,
+          )
+        }
+        zone = moment
+      }
+    }
+  }
+  zone ??= 'utc'
+
+  if (moment instanceof Date && Number.isNaN(moment.getTime())) {
+    throw new RangeError('daymath: day() got an Invalid Date')
+  }
+  if (typeof moment === 'number' && !Number.isFinite(moment)) {
+    throw new RangeError(`daymath: day() got a non-finite time value ${moment}`)
+  }
+
+  // Shape first, because implementations disagree past this point. The reasons
+  // are on ZONE_LIKE. The typeof test comes first because `.test()` coerces,
+  // and a caller-supplied toString could throw an error that is not ours.
+  if (typeof zone !== 'string' || !ZONE_LIKE.test(zone)) {
+    throw new RangeError(
+      `daymath: day() got an unknown time zone ${JSON.stringify(zone)}`,
+    )
+  }
+
+  // Checked before anything returns, so a mistyped zone fails the same way
+  // whatever the moment is. A caller mapping rows that are sometimes a Date and
+  // sometimes a day string would otherwise see the typo only on some rows.
+  //
+  // `ZonedDateTime.from` accepts exactly what `Temporal.Now` accepts and reads
+  // no clock, so a day input stays a pure function.
+  try {
+    Temporal.ZonedDateTime.from({ timeZone: zone, year: 1970, month: 1, day: 1 })
+  } catch (err) {
+    throw new RangeError(
+      `daymath: day() got an unknown time zone ${JSON.stringify(zone)}`,
+      { cause: err },
+    )
+  }
+
+  // A day carries no time, so a zone has nothing to shift. Applying one would
+  // invent a moment the caller never gave.
+  if (isDay) return toDayString(toPlainDate(moment))
+
+  // The string named its own zone, so that zone decides the day, not the
+  // default. This is the one path where `zone` is deliberately not consulted.
+  //
+  // The result still goes through `toPlainDate`. A ZonedDateTime keeps a
+  // `[u-ca=…]` annotation, and `PlainDate.toString()` writes it back out, so
+  // returning directly emitted `'2026-08-08[u-ca=buddhist]'` — a value daymath
+  // itself refuses. Every path adjudicates the calendar in one place or none.
+  if (zoned !== undefined) {
+    const plain = guardRange('day', () => zoned.toPlainDate())
+    return toDayString(toPlainDate(plain))
+  }
+
+  if (instant !== undefined) {
+    return guardRange('day', () =>
+      instant.toZonedDateTimeISO(zone).toPlainDate().toString(),
+    )
+  }
+
+  if (!isMoment) return Temporal.Now.plainDateISO(zone).toString()
+
+  // Truncate, because `new Date(n)` truncates, and the contract here is that a
+  // number reads exactly as it does. Verified equal on positive and negative
+  // fractions. Sub-millisecond precision cannot change a calendar day anyway.
+  // Every other shape returned above, so only a number or a Date reaches here.
+  // The cast says what the control flow already guarantees but tsc cannot see.
+  const epochMs =
+    typeof moment === 'number'
+      ? Math.trunc(moment)
+      : /** @type {Date} */ (moment).getTime()
+  return guardRange('day', () =>
+    Temporal.Instant.fromEpochMilliseconds(epochMs)
+      .toZonedDateTimeISO(zone)
+      .toPlainDate()
+      .toString(),
+  )
 }
 
 // ─── parse / format / valid ────────────────────────────────────────
@@ -608,9 +961,7 @@ export function differenceInQuarters(dateLeft, dateRight) {
 export function differenceInCalendarQuarters(dateLeft, dateRight) {
   const left = toPlainDate(dateLeft, 'dateLeft')
   const right = toPlainDate(dateRight, 'dateRight')
-  return (
-    (left.year - right.year) * 4 + (getQuarter(left) - getQuarter(right))
-  )
+  return (left.year - right.year) * 4 + (getQuarter(left) - getQuarter(right))
 }
 
 // ─── compare / equal ───────────────────────────────────────────────
@@ -672,9 +1023,9 @@ export function isSameWeek(dateLeft, dateRight, options) {
   const right = toPlainDate(dateRight, 'dateRight')
   // own guard, so a week start below the minimum does not say startOfWeek
   return guardRange('isSameWeek', () =>
-    left.subtract({ days: daysIntoWeek(left, options) }).equals(
-      right.subtract({ days: daysIntoWeek(right, options) }),
-    ),
+    left
+      .subtract({ days: daysIntoWeek(left, options) })
+      .equals(right.subtract({ days: daysIntoWeek(right, options) })),
   )
 }
 
@@ -894,8 +1245,7 @@ export function isWithinInterval(date, interval) {
     throw new RangeError('daymath: interval start must not be after end')
   }
   return (
-    Temporal.PlainDate.compare(d, start) >= 0 &&
-    Temporal.PlainDate.compare(d, end) <= 0
+    Temporal.PlainDate.compare(d, start) >= 0 && Temporal.PlainDate.compare(d, end) <= 0
   )
 }
 

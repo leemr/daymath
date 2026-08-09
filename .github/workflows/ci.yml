@@ -14,9 +14,9 @@ jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
-      # Active LTS + Current (not a 22 preference). engines still >=18.
+      # Active LTS + Current. Node 18 went end-of-life in April 2025.
       matrix:
-        node: [18, 20, 22, 24, 26]
+        node: [20, 22, 24, 26]
     name: Node ${{ matrix.node }}
     steps:
       - uses: actions/checkout@v7
@@ -25,12 +25,25 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: npm
       - run: npm ci
+      # Static gates run once, on the primary version. They are not per-version
+      # facts, so repeating them across the matrix only buys noise.
+      - name: Lint
+        if: matrix.node == 26
+        run: npm run lint
+      - name: Types (tsc over index.js JSDoc and index.d.ts)
+        if: matrix.node == 26
+        run: npm run typecheck
+      - name: Format
+        if: matrix.node == 26
+        run: npm run format:check
       - run: npm test
+      - name: Cross-runtime baseline
+        run: npm run test:runtimes
       - name: Coverage (100% gate + lcov)
-        if: matrix.node == 24
+        if: matrix.node == 26
         run: npm run test:coverage
       - name: Upload coverage to Codecov
-        if: matrix.node == 24
+        if: matrix.node == 26
         uses: codecov/codecov-action@v5
         with:
           files: coverage/lcov.info
@@ -40,3 +53,39 @@ jobs:
           use_oidc: true
           fail_ci_if_error: false
           # Set true after Codecov is linked and first upload succeeds.
+
+  # daymath claims to run anywhere, so it is checked somewhere that is not Node.
+  # Deno is the one that matters most: it ships **native** Temporal, so this lane
+  # is the only CI proof that the polyfill and the standard agree. Bun still uses
+  # the polyfill today, and covers a third module resolver.
+  runtimes:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runtime: deno
+          - runtime: bun
+    name: ${{ matrix.runtime }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci # one lockfile for every runtime, so they compare like for like
+
+      - if: matrix.runtime == 'deno'
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - if: matrix.runtime == 'deno'
+        # =manual reuses the tree npm just installed. Plain --node-modules-dir
+        # replaces it with symlinks into node_modules/.deno, which is fine in a
+        # throwaway job but breaks a local checkout until you re-run `npm ci`.
+        run: deno run -R --node-modules-dir=manual scripts/cross-runtime.mjs
+
+      - if: matrix.runtime == 'bun'
+        uses: oven-sh/setup-bun@v2
+      - if: matrix.runtime == 'bun'
+        run: bun scripts/cross-runtime.mjs
