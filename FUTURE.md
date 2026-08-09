@@ -43,18 +43,47 @@ Checked-in backlog. Not a promise of order. Session handoff: local `todo.grok` (
 
 Static `temporal-polyfill` class import still ships polyfill even when native Temporal exists.
 
+**The rig is checked in: `npm run size`.** Twelve shapes, one esbuild, one process. `--run` executes
+every fixture first, so a program that throws can never be quoted as a size. `npm run size:check`
+is the CI gate; `npm run size:write` moves the baseline, deliberately. Read the numbers from the
+rig, not from here — absolute byte counts do not transfer between experiments, and only an A/B
+made inside one run is evidence.
+
 - ~~Dynamic import / optional peer for native Temporal~~ — **measured, dead end.** The polyfill still ships in a lazy chunk, and it forces the whole API async.
-- **`temporal-polyfill/fns/PlainDate`** is the live option. Measured with esbuild 0.28.1, minified, ESM, browser, on a three-call program:
+- **`temporal-polyfill/fns/PlainDate` is the live option, and it is worth −13.1 kB gzip** on a
+  three-call program: 20.0 kB → 6.9 kB, a 66% cut. Measured 2026-08-09, esbuild 0.28.1.
+- **The win needs the caller to tree-shake.** At whole surface, fns is 0.8 kB *worse*, because
+  `fns/PlainDate.js` statically imports both `funcApi-native.js` and `funcApi-shim.js` and picks
+  with `NativeTemporal ? … : …`. Nothing shakes when a caller reaches everything.
+- **Returning a real `PlainDate` costs the whole saving and more** (+14.5 kB), because
+  `fns.toTemporal` needs a free `Temporal` global and throws without one, so the class API comes
+  back in. Returning strings is what keeps this option open.
+- **`day()` no longer needs Temporal at all.** `Intl` already carries a TZ database in every
+  runtime, and it answers the only hard direction: instant + zone → civil day. Verified against
+  Temporal over 40,120 zone/moment pairs, **0 mismatches**, including BC eras, expanded years,
+  DST gaps and negative DST. `npm run test:intl-day` is that harness.
 
-  | shape | min | gzip |
-  |---|---|---|
-  | class API (today) | 56,448 B | 19,806 B |
-  | fns, string out | 16,814 B | **6,423 B** |
-  | fns, but returning a real `PlainDate` | 59,994 B | 20,791 B |
+  | day() built on | gzip in a fns port |
+  |---|---|
+  | `Instant` + `ZonedDateTime` + `Now` | 9.2 kB |
+  | `Intl` only | **7.2 kB** |
+  | `Intl`, `ZonedDateTime` kept for wall time | 9.1 kB |
 
-  Returning a `PlainDate` costs the whole saving and more, because `fns.toTemporal` builds with a free `Temporal` global and throws without native support, so the class API comes back in. Returning strings is what keeps this option open.
-- `day()` now uses `Temporal.Instant` and `ZonedDateTime`. That is free today and will add bytes to a fns port. **Not yet measured.**
-- Absolute byte counts do not transfer between experiments; only an A/B inside one does.
+  `ZonedDateTime` is the whole cost. Dropping `Instant` and `Now` while keeping it saves 0.1 kB.
+
+  **The one branch `Intl` cannot serve is the inverse:** wall time plus a named zone,
+  `'2026-08-08T12:00[America/New_York]'`. `Intl` cannot be run backwards. But daymath only wants
+  the *day*, and the day in that zone is the date part of the string. Swept every IANA zone and
+  all 41,892 transitions from 1900 to 2100: that answer differs from Temporal on **exactly 5
+  days**, every one a historical date-line move where the day never existed in that zone —
+  `Pacific/Apia` and `Pacific/Fakaofo` 2011-12-30, `Pacific/Enderbury` and `Pacific/Kiritimati`
+  1994-12-31, `Pacific/Kwajalein` 1993-08-21. Baseline asserted in `scripts/intl-day.mjs`;
+  re-walk with `npm run test:intl-day:sweep`.
+
+  **Open product call:** on those five days Temporal answers the next day, and the date part
+  answers the day the caller wrote. daymath is a day library and never resolves an instant, so
+  the date part is arguably the more honest answer — but it is a behaviour change from 0.4.0.
+- The calendars decision has a byte price too. See the `[u-ca=]` item below.
 - Measure in a real app (e.g. itrvl) before rewriting  
 
 ---
@@ -99,11 +128,27 @@ Static `temporal-polyfill` class import still ships polyfill even when native Te
   refusal lives in one function, `assertIsoCalendar`, called from `toPlainDate` and from the
   zoned path in `day()`. That is the single place this PR would widen.
 
-  Two questions the PR must still answer:
+  **Priced, 2026-08-09.** In a fns port the calendar set is a *build-time* choice:
+  `fromString(s, getCalendar)` takes a resolver, and `temporal-polyfill/fns/Calendar` exports
+  `getISO`, `getBasic`, `getAny` plus one getter per calendar. ISO + buddhist + roc costs
+  **+0.5 kB gzip**; admitting every calendar costs **+4.2 kB**. So the matching-family rule is
+  nearly free, and refusing the other thirteen saves 3.7 kB.
+
+  **The resolver is not a gate on the native path.** Same call, `getISO`, the string
+  `'2026-01-31[u-ca=buddhist]'`: the shim path (no native `Temporal`, so every browser today)
+  answers `'2026-01-31'` and drops the annotation, while the native path (Node 26, Deno) answers
+  `'2026-01-31[u-ca=buddhist]'` with `.year` 2569. One program, two answers, decided by the
+  runtime. `npm run test:runtimes` is the only gate that can see it, and a fns port therefore
+  cannot delete `assertIsoCalendar`.
+
+  Three questions the PR must still answer:
 
   1. **`japanese` is era-based.** `.year` reads 2026 but `.eraYear` reads 8 for Reiwa 8. A
      year-offset rule does not describe it, so it may need its own decision.
-  2. **The object / string asymmetry belongs to Temporal.** A string's date part is always ISO;
+  2. **A mixed pair throws.** `differenceInDays('2026-01-31[u-ca=buddhist]', '2026-03-01')` raises
+     Temporal's `Mismatched calendars`. Both sides must name the same calendar, so daymath has to
+     decide whether it refuses a mixed pair or normalises one side.
+  3. **The object / string asymmetry belongs to Temporal.** A string's date part is always ISO;
      an object's fields are calendar fields, so `from({year: 2026, …, calendar: 'buddhist'})` is
      ISO 1483. Taking annotated strings inherits that rule and stays consistent with Temporal.
      daymath cannot fix it.
