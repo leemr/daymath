@@ -8,6 +8,18 @@ import type { Temporal } from 'temporal-polyfill'
  * Usable range is the Temporal `PlainDate` range `-271821-04-19` …
  * `+275760-09-13`; a day outside it throws a `RangeError`.
  * `Date` is rejected at runtime (TypeError).
+ *
+ * A `[u-ca=…]` calendar annotation is accepted when the calendar only relabels
+ * the year, and it rides along into the result:
+ * `getYear('2026-01-31[u-ca=buddhist]')` is `2569` and `addDays` of it is
+ * `'2026-02-01[u-ca=buddhist]'`. Today that admits `buddhist`, `roc`,
+ * `japanese` and `gregory`. A calendar that renumbers months or days, such as
+ * `hebrew` or `chinese`, throws a `RangeError`. The line is measured at runtime
+ * rather than held as a list, so no code names a calendar.
+ *
+ * Measurement ignores the label, because a day is the same day whatever its
+ * year is called: `differenceInDays` and `isEqual` normalise both operands, so a
+ * mixed pair answers instead of throwing `Mismatched calendars`.
  */
 export type DayInput = string | Temporal.PlainDate
 
@@ -44,6 +56,15 @@ export type WeekOptions = {
  * A lone string takes one of four roles, in this order: a day, a zoned time, an
  * instant, then a zone. The zone test is by shape — an IANA name, which carries
  * no `:`, or a bare offset — so a timestamp can never be read as a zone.
+ *
+ * **day() is the normaliser, and that is the whole rule: a moment converts to a
+ * plain ISO day, and so does a day.** A `[u-ca=…]` annotation is accepted
+ * wherever the other exports accept it, and then dropped from the result, so
+ * `day` never returns `[u-ca=…]`. Every other export carries it. `parse`
+ * validates and preserves; `day` normalises.
+ *
+ * A calendar that renumbers months or days is still refused where it is
+ * applied, which means with a `[Zone]` bracket and on a day string.
  */
 export function day(tz?: string): string
 export function day(

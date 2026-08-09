@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { spawnSync } from 'node:child_process'
 import { describe, it } from 'node:test'
 import { Temporal } from 'temporal-polyfill'
 // A second, genuinely distinct Temporal implementation. Used to prove daymath
@@ -280,17 +281,29 @@ describe('day() — the one export that reads a clock', () => {
     // which returned '2026-08-08[u-ca=buddhist]' once — a value daymath refuses.
     // It is settled on the string, before the parse, because native Temporal
     // builds such a ZonedDateTime and the polyfill refuses to.
+    // A calendar that only relabels the year is ACCEPTED here, exactly as it is everywhere else.
+    // But day() is the normaliser, so it drops the annotation instead of carrying it. Every other
+    // export carries it; day() hands back the canonical form.
     for (const s of [
       '2026-08-08T12:00[America/New_York][u-ca=buddhist]',
       '2026-08-08T12:00[America/New_York][!u-ca=buddhist]',
-      '1999-06-06[Asia/Tokyo][u-ca=hebrew]',
-      '2026-08-08T12:00[UTC][u-ca=gregory]', // gregory numbers match ISO
+      '2026-08-08T12:00[UTC][u-ca=gregory]',
     ]) {
-      assert.throws(() => dm.day(s), /must use the ISO 8601 calendar/)
+      assert.equal(dm.day(s), '2026-08-08')
     }
-    // Without a zone bracket the calendar is inert, so it is ignored rather than
-    // refused. An Instant has no year, month or day for a calendar to renumber.
-    assert.equal(dm.day('2026-08-08T20:00:00Z[u-ca=buddhist]'), '2026-08-08')
+    // Which is what makes the three input shapes agree. Carrying on the [Zone] path while an
+    // Instant has nothing to carry would give one annotation two behaviours in one function.
+    assert.equal(dm.day('2026-08-08T20:00:00Z[u-ca=buddhist]'), '2026-08-08') // inert
+    assert.equal(dm.day('2026-08-08[u-ca=buddhist]'), '2026-08-08') // already a day
+    // parse KEEPS it, and that difference is the point: parse validates, day normalises.
+    assert.equal(parse('2026-08-08[u-ca=buddhist]'), '2026-08-08[u-ca=buddhist]')
+    // A renumbering calendar is still refused, wherever it is applied.
+    assert.throws(
+      () => dm.day('1999-06-06[Asia/Tokyo][u-ca=hebrew]'),
+      /renumbers months or days/,
+    )
+    // Without a zone bracket the calendar is inert, so there is nothing to renumber and nothing
+    // to drop. An Instant has no year, month or day at all.
     assert.equal(dm.day('2026-08-08T20:00:00-04:00[u-ca=buddhist]'), '2026-08-09')
     // And it accepts the one annotation daymath accepts anywhere else.
     assert.equal(dm.day('2026-08-08T12:00[America/New_York][u-ca=iso8601]'), '2026-08-08')
@@ -506,33 +519,189 @@ describe('a PlainDate from another Temporal implementation', () => {
     }
   })
 
-  it('refuses a non-ISO calendar, as an object and as a string alike', () => {
-    // Two families. Buddhist keeps month and day but shifts the year by 543.
-    // Hebrew renumbers all three. Both would survive as a *day* and lose their
-    // field numbers, so both are refused rather than reinterpreted.
+  it('accepts a calendar that only relabels the year, and refuses one that renumbers', () => {
+    // Two families, and the rule is measured rather than listed. Buddhist keeps month and day
+    // and shifts the year by 543, so every export still answers honestly. Hebrew renumbers all
+    // three, so a day in it cannot be answered at all.
     const buddhist = OTHER.from('2026-01-31[u-ca=buddhist]')
     assert.equal(buddhist.year, 2569) // control: 2026 + 543
     assert.equal(buddhist.month, 1) // month and day match ISO here
     assert.equal(buddhist.day, 31)
-    assert.throws(() => format(buddhist), /ISO 8601/)
-    assert.throws(() => dm.getYear(buddhist), /ISO 8601/) // would have said 2026
-    assert.throws(() => dm.day(buddhist), /ISO 8601/)
-    assert.throws(() => parse('2026-01-31[u-ca=buddhist]'), /ISO 8601/)
+
+    // The annotation rides along, so the caller's own numbering survives the round trip.
+    assert.equal(format(buddhist), '2026-01-31[u-ca=buddhist]')
+    assert.equal(dm.getYear(buddhist), 2569) // NOT 2026: the caller's object says 2569
+    assert.equal(dm.getMonth(buddhist), 1)
+    assert.equal(dm.getDate(buddhist), 31)
+    assert.equal(dm.addDays(buddhist, 1), '2026-02-01[u-ca=buddhist]')
+    assert.equal(dm.setYear(buddhist, 2570), '2027-01-31[u-ca=buddhist]')
+    assert.equal(dm.day(buddhist), '2026-01-31') // day() normalises; the others carry
+    assert.equal(parse('2026-01-31[u-ca=buddhist]'), '2026-01-31[u-ca=buddhist]')
+    // The critical spelling is accepted too: daymath now understands the annotation, which is
+    // exactly what the `!` asks a reader to confirm before proceeding.
+    assert.equal(parse('2026-01-31[!u-ca=buddhist]'), '2026-01-31[u-ca=buddhist]')
+
+    // roc and japanese pass the same rule. Temporal reports a continuous year for both, so both
+    // are pure labels. Intl would answer the ERA year here, 115 and 8, and disagree with Temporal
+    // on japanese; Temporal is the reference, so Temporal is what the rule reads.
+    assert.equal(dm.getYear('2026-01-31[u-ca=roc]'), 115) // 2026 − 1911
+    assert.equal(dm.getYear('2026-01-31[u-ca=japanese]'), 2026) // offset 0, not Reiwa 8
+    assert.equal(dm.getYear('2026-01-31[u-ca=gregory]'), 2026)
+    // roc before 1912 is still a pure offset in Temporal terms, so it still works.
+    assert.equal(dm.getYear('1900-01-01[u-ca=roc]'), -11)
+
+    // A day is the same day whatever the year is labelled, so a mixed pair measures and compares
+    // rather than throwing. Temporal's own `since` refuses this with `Mismatched calendars`.
+    assert.equal(dm.differenceInDays('2026-03-01', '2026-01-31[u-ca=buddhist]'), 29)
+    assert.equal(dm.isEqual('2026-01-31[u-ca=buddhist]', '2026-01-31'), true)
+    assert.equal(dm.isSameWeek('2026-01-31[u-ca=buddhist]', '2026-01-31'), true)
 
     const hebrew = OTHER.from('2026-01-31[u-ca=hebrew]')
     assert.equal(hebrew.month, 5) // control: Hebrew names this month 5
-    assert.throws(() => format(hebrew), /ISO 8601/)
-    assert.throws(() => dm.getMonth(hebrew), /ISO 8601/) // would have said 1
+    assert.throws(() => format(hebrew), /renumbers months or days/)
 
-    // The error names the calendar and the way out, not a malformed string.
-    assert.throws(() => dm.getYear(buddhist), {
+    // The error names the calendar and the way out, not a malformed string. This also covers
+    // getMonth(hebrew), which would have answered 1.
+    assert.throws(() => dm.getMonth(hebrew), {
       name: 'RangeError',
       message:
-        'daymath: date must use the ISO 8601 calendar, not "buddhist" (convert with withCalendar(\'iso8601\'))',
+        'daymath: date calendar "hebrew" renumbers months or days, so daymath cannot answer a day in it (convert with withCalendar(\'iso8601\'))',
     })
-    assert.throws(() => dm.getMonth(hebrew), /not "hebrew"/)
-    // The critical form of the annotation is refused the same way.
-    assert.throws(() => parse('2026-01-31[!u-ca=buddhist]'), /not "buddhist"/)
+    // A lunisolar calendar cannot be caught by a month COUNT: hebrew has 12 months in 2025 and
+    // 2026 and 13 in 2024 and 2027, so only the field comparison is right in every year.
+    for (const y of ['2024', '2025', '2026', '2027']) {
+      assert.throws(() => dm.getMonth(`${y}-01-31[u-ca=hebrew]`), /renumbers/)
+    }
+    // THE RULE, swept over the whole class. Every export that takes TWO dates measures in ONE
+    // coordinate system and ignores the year label. Only a single-date field read or write honours
+    // it. Three of these answered a silently wrong number before the review, and three more
+    // answered true for two days 543 ISO years apart.
+    const far = '2569-01-31' // ISO 2569, which is 198,327 days after the Buddhist day above
+    assert.equal(dm.differenceInDays(buddhist, far), -198_327)
+    assert.equal(dm.differenceInWeeks(buddhist, far), -28_332)
+    assert.equal(dm.differenceInMonths(buddhist, far), -6516)
+    assert.equal(dm.differenceInQuarters(buddhist, far), -2172)
+    assert.equal(dm.differenceInYears(buddhist, far), -543)
+    assert.equal(dm.differenceInCalendarMonths(buddhist, far), -6516)
+    assert.equal(dm.differenceInCalendarQuarters(buddhist, far), -2172)
+    assert.equal(dm.differenceInCalendarYears(buddhist, far), -543)
+    assert.equal(dm.isSameYear(buddhist, far), false)
+    assert.equal(dm.isSameMonth(buddhist, far), false)
+    assert.equal(dm.isSameQuarter(buddhist, far), false)
+    assert.equal(dm.isSameWeek(buddhist, far), false)
+    assert.equal(dm.isEqual(buddhist, far), false)
+    // The field reads still honour the label, which is the other half of the rule.
+    assert.equal(dm.getQuarter(buddhist), 1) // getYear and setYear are asserted above
+    // And on the README's own near pair, a 29-day gap is one month, not 6,513.
+    assert.equal(dm.differenceInMonths('2026-03-01', '2026-01-31[u-ca=buddhist]'), 1)
+    assert.equal(dm.differenceInYears('2026-03-01', '2026-01-31[u-ca=buddhist]'), 0)
+
+    // An implausible calendar id is refused BEFORE it can reach the verdict cache. Without this
+    // the cache grew without bound from caller input and never released: 200,000 distinct rejected
+    // ids retained 56.5 MB, and isValid swallowed every error, so nothing was raised or logged.
+    assert.equal(dm.isValid(`2026-01-31[u-ca=${'y'.repeat(100_000)}]`), false)
+    assert.throws(() => parse(`2026-01-31[u-ca=${'y'.repeat(100_000)}]`), {
+      name: 'RangeError',
+      // The message quotes a truncated id, so a megabyte of input cannot become a megabyte of error.
+      message: /is not a calendar this runtime knows/,
+    })
+    assert.ok(
+      capture(() => parse(`2026-01-31[u-ca=${'y'.repeat(100_000)}]`)).message.length <
+        200,
+    )
+    // Real ids on both sides of the length rule still work.
+    assert.throws(() => parse('2026-01-31[u-ca=islamic-umalqura]'), /renumbers/) // 16, the longest
+
+    // THE REGRESSION TEST for the defect a review round found in the fix before it. A global
+    // `Temporal` is not necessarily native: an app doing `import 'temporal-polyfill/global'`
+    // installs the BASE build, which can construct only iso8601 and gregory. Selecting it blindly
+    // cost daymath three of its four calendars, and the error blamed the caller's calendar rather
+    // than naming the capability loss. Import order decided it, which is worse than a wrong answer.
+    //
+    // A CHILD process, because the selection reads the global once at module load and this process
+    // already has native Temporal.
+    {
+      const probe = `
+        delete globalThis.Temporal
+        await import('temporal-polyfill/global')
+        const base = globalThis.Temporal.PlainDate.from('2026-01-31')
+        let baseBuildsBuddhist = true
+        try { base.withCalendar('buddhist') } catch { baseBuildsBuddhist = false }
+        const dm = await import(${JSON.stringify(new URL('./index.js', import.meta.url).href)})
+        console.log(JSON.stringify({
+          baseBuildsBuddhist,
+          buddhist: dm.getYear('2026-01-31[u-ca=buddhist]'),
+          roc: dm.getYear('2026-01-31[u-ca=roc]'),
+          japanese: dm.getYear('2026-01-31[u-ca=japanese]'),
+          iso: dm.getYear('2026-01-31'),
+        }))
+      `
+      const { stdout } = spawnSync(
+        process.execPath,
+        ['--input-type=module', '-e', probe],
+        {
+          encoding: 'utf8',
+        },
+      )
+      const got = JSON.parse(stdout)
+      assert.equal(got.baseBuildsBuddhist, false) // control: the global really is the base build
+      assert.equal(got.buddhist, 2569) // and daymath keeps all four calendars anyway
+      assert.equal(got.roc, 115)
+      assert.equal(got.japanese, 2026)
+      assert.equal(got.iso, 2026)
+    }
+
+    // `islamic` and `islamic-rgsa` are the only ids the runtime NAMES but Temporal refuses to
+    // BUILD, so they are the only inputs that now reach calendarRule's catch. Membership is checked
+    // first, so anything the runtime does not name never gets that far.
+    for (const id of ['islamic', 'islamic-rgsa']) {
+      assert.ok(Intl.supportedValuesOf('calendar').includes(id)) // control: the runtime names it
+      assert.throws(
+        () => parse(`2026-01-31[u-ca=${id}]`),
+        /is not a calendar this runtime knows/,
+      )
+    }
+
+    // BCP-47 calendar keys are case-insensitive, and the cache keys on the lowercased id, so one
+    // name cannot become 256 entries.
+    for (const spelling of ['buddhist', 'BUDDHIST', 'Buddhist', 'bUdDhIsT']) {
+      assert.equal(dm.getYear(`2026-01-31[u-ca=${spelling}]`), 2569)
+    }
+
+    // THE TRAP, pinned as a test because it is the one way to get a wrong answer with no error.
+    // Buddhist 2567 is ISO 2024, a leap year. But 2567 read as an ISO year is not, because the
+    // offset is 543 and 543 mod 4 is 3, so the leap years land in different places. Passing the
+    // calendar's own year as a bare ISO year therefore breaks February, silently.
+    assert.equal(dm.isLeapYear('2024-01-01[u-ca=buddhist]'), true) // the real Buddhist 2567
+    assert.equal(dm.getYear('2024-01-01[u-ca=buddhist]'), 2567) // control
+    assert.equal(dm.isLeapYear('2567-01-01'), false) // 2567 read as ISO
+    assert.equal(dm.getDaysInMonth('2024-02-01[u-ca=buddhist]'), 29)
+    assert.equal(dm.getDaysInMonth('2567-02-01'), 28)
+    assert.equal(dm.addDays('2024-02-28[u-ca=buddhist]', 1), '2024-02-29[u-ca=buddhist]')
+    assert.equal(dm.addDays('2567-02-28', 1), '2567-03-01') // looks fine, is a day early
+    assert.throws(() => parse('2567-02-29'), /invalid date/) // the day exists in Buddhist 2567
+    // 49 of the 101 Buddhist years from 2500 to 2600 disagree, so this is not an edge case.
+    let disagreements = 0
+    for (let b = 2500; b <= 2600; b++) {
+      const asIso = dm.isLeapYear(`${b}-01-01`)
+      const real = dm.isLeapYear(
+        `${String(b - 543).padStart(4, '0')}-01-01[u-ca=buddhist]`,
+      )
+      if (asIso !== real) disagreements++
+    }
+    assert.equal(disagreements, 49)
+
+    // And the double shift, for the same reason: the date part is ISO and the annotation adds on
+    // top of it, so a Buddhist year written into the date part is 543 years out twice over.
+    assert.equal(dm.getYear('2569-08-08[u-ca=buddhist]'), 3112)
+
+    // A calendar the runtime cannot build at all gets its own message, so a typo is not read as
+    // a renumbering calendar.
+    assert.throws(() => parse('2026-01-31[u-ca=buddhst]'), {
+      name: 'RangeError',
+      message:
+        'daymath: date calendar "buddhst" is not a calendar this runtime knows (convert with withCalendar(\'iso8601\'))',
+    })
 
     // But `[u-ca=iso8601]` is the caller's own round-trip, so it is accepted
     // and dropped. Temporal writes it for toString({calendarName:'always'}).
@@ -569,8 +738,12 @@ describe('a PlainDate from another Temporal implementation', () => {
     for (const s of [written, '2026-01-31[!u-ca=iso8601]', '2026-01-31[u-ca=ISO8601]']) {
       assert.equal(dm.day(s), iso, `day(${JSON.stringify(s)}) must match parse`)
     }
-    // Including the refusal, and its exact wording.
-    assert.throws(() => dm.day('2026-01-31[u-ca=buddhist]'), /not "buddhist"/)
+    // And on an accepted calendar, where they agree on ACCEPTING and differ on the result.
+    assert.equal(dm.day('2026-01-31[u-ca=buddhist]'), iso) // day() normalises
+    assert.equal(parse('2026-01-31[u-ca=buddhist]'), '2026-01-31[u-ca=buddhist]') // parse carries
+    // And on a refused one, with the same wording from both.
+    assert.throws(() => dm.day('2026-01-31[u-ca=hebrew]'), /renumbers months or days/)
+    assert.throws(() => parse('2026-01-31[u-ca=hebrew]'), /renumbers months or days/)
 
     // withCalendar is the deliberate way through, and daymath takes the result.
     assert.equal(format(buddhist.withCalendar('iso8601')), iso)

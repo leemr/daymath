@@ -157,11 +157,34 @@ const JUNK = [
   'T120000Z', // the compact spelling, which carries no colon to catch it
   '2026-08-08T20:00:00-05:00[America/New_York]', // the offset contradicts the zone
   '2026-08-08T20:00:00Z[Asia/Tokoy]', // a misspelled zone in the bracket
-  '2026-08-08T12:00[America/New_York][u-ca=buddhist]', // a zone and a calendar
-  '2026-08-08T12:00[UTC][u-ca=gregory]', // gregory leaked on every runtime once
-  '2026-01-31[u-ca=buddhist]', // a real calendar annotation, refused
-  '2026-01-31[!u-ca=buddhist]', // the critical spelling of it
+  '2026-01-31[u-ca=hebrew]', // renumbers month and day, so it is refused
+  '2026-01-31[!u-ca=hebrew]', // the critical spelling of it
+  '2026-01-31[u-ca=chinese]', // lunisolar, 13 months
+  '2026-01-31[u-ca=buddhst]', // a typo: not a calendar the runtime knows
+  '2026-08-08T12:00[America/New_York][u-ca=hebrew]', // a zone and a refused calendar
   '[u-ca=[u-ca=[u-ca=x]]]', // bracket soup: probes the annotation regex alone
+]
+
+// Calendars daymath ACCEPTS, because each only relabels the year. The rule is measured, so this
+// list is a probe set and not the rule itself — `calendarRule` in index.js names no calendar.
+//
+// These carry the annotation through every export, so the results are NOT the same as the bare
+// ISO day: getYear answers 2569 for a Buddhist day, and every returned string keeps the
+// annotation. They sat in JUNK while daymath refused them, which is why moving them is what
+// re-records the baseline.
+//
+// The critical spelling matters here: `!` asks a reader to confirm it understands the annotation
+// before proceeding, and daymath now does.
+const CALENDARS = [
+  '2026-01-31[u-ca=buddhist]', // +543
+  '2026-01-31[!u-ca=buddhist]',
+  '2026-01-31[u-ca=roc]', // −1911
+  '1900-01-01[u-ca=roc]', // before 1912, still a pure offset in Temporal terms
+  '2026-01-31[u-ca=japanese]', // offset 0; Intl would say Reiwa 8 here
+  '2019-05-01[u-ca=japanese]', // the first day of Reiwa, an era change mid-ISO-year
+  '2026-01-31[u-ca=gregory]', // offset 0
+  '2026-08-08T12:00[America/New_York][u-ca=buddhist]', // a zone and an accepted calendar
+  '2026-08-08T12:00[UTC][u-ca=gregory]', // gregory leaked on every runtime once
 ]
 
 /**
@@ -241,6 +264,19 @@ export function run(dm, PlainDate) {
         outcome(() => fn('2026-08-06', j)),
         outcome(() => fn({ start: j, end: '2026-08-06' })),
       )
+    }
+    for (const c of CALENDARS) {
+      rows.push(
+        outcome(() => fn(c)),
+        outcome(() => fn(c, 1)),
+      )
+      // A mixed pair on purpose: one side carries a calendar and the other does not. Measurement
+      // normalises, so a day count answers rather than throwing `Mismatched calendars`.
+      rows.push(
+        outcome(() => fn(c, '2026-03-01')),
+        outcome(() => fn({ start: c, end: '2026-03-01' })),
+      )
+      rows.push(outcome(() => fn(c, { weekStartsOn: 1 })))
     }
     for (const pd of asObjects) {
       rows.push(

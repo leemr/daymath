@@ -14,8 +14,9 @@ import { getISO, getBuddhist, getROC } from 'temporal-polyfill/fns/Calendar'
 const resolve = (id) =>
   id === 'buddhist' ? getBuddhist() : id === 'roc' ? getROC() : getISO()
 
-// Both sides must name the SAME calendar. Temporal throws `Mismatched calendars` on a diff
-// between an annotated day and a plain one, so daymath cannot accept a mixed pair.
+// Both sides name the same calendar because TEMPORAL requires it: its `diff` throws
+// `Mismatched calendars` across two calendars. daymath itself accepts a mixed pair — it normalises
+// both operands for measurement — so this constraint is the fns layer's, not daymath's.
 const start = fromString('2026-01-31[u-ca=buddhist]', resolve)
 console.log(
   toString(addDays(start, 30)),

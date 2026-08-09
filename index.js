@@ -1,8 +1,95 @@
 /** daymath — calendar date math (ISO 8601 day). date-fns-shaped. No Date. No time zones. */
-// temporal-polyfill already resolves this: its entry is `globalThis.Temporal ||
-// bundled`, so a runtime with native Temporal gets native. Re-reading
-// globalThis here only duplicated that check and hid where it happens.
-import { Temporal } from 'temporal-polyfill'
+// The selection is HERE on purpose, and it must not be removed again.
+//
+// `temporal-polyfill`'s base entry resolves `globalThis.Temporal || bundled` itself, so importing
+// it gave native Temporal for free. But that base build can construct only iso8601 and gregory, so
+// it cannot serve the calendar rule below. `temporal-polyfill/full` can construct sixteen — and its
+// entry is a bare re-export with NO selection, so importing it alone silenced native Temporal on
+// every runtime, including Node 26 and Deno. Round 1 of a review caught that.
+//
+// Round 2 then caught the naive repair. A global `Temporal` is NOT necessarily native: an app doing
+// `import 'temporal-polyfill/global'` installs the BASE build, and the polyfill's own README calls
+// that the most common entry point. Selecting it blindly cost daymath three of its four calendars
+// on Node 20 and 22, which have no native Temporal, and the error blamed the caller's calendar
+// rather than naming the capability loss. Import order decided it, which is worse than a wrong
+// answer. So the candidate is PROBED, not trusted.
+//
+// The probe names no calendar. It asks the runtime for one, which keeps the "method, not a list"
+// rule that governs the calendar surface below.
+//
+// Measured: the selection costs 17 B gzip, because the polyfill ships either way — a bundler cannot
+// know at build time whether the runtime has Temporal, which is why FUTURE.md records dynamic
+// import as a dead end. Native and the bundled full build agree on every calendar daymath touches:
+// 464 date/calendar pairs over the four accepted calendars from 1900 to 2100, plus the eleven
+// refused ones, with zero disagreements.
+//
+// Native matters for three reasons beyond taste. daymath's contract is Temporal's behaviour, and
+// native IS Temporal. The deno CI lane exists to prove the polyfill and the standard agree, and it
+// cannot prove that if daymath runs the polyfill there. And an engine-level Temporal fix then
+// reaches callers with no release from here.
+import { Temporal as bundledTemporal } from 'temporal-polyfill/full'
+
+/**
+ * Every calendar this runtime names. Read once, lowercased, because BCP-47 keys are
+ * case-insensitive while a `Map` key is not.
+ *
+ * This set is also what bounds the verdict cache below. It is closed and small — 18 ids on Node 26
+ * — so an id the runtime does not name is refused without ever being stored.
+ *
+ * `Intl.supportedValuesOf` is ES2022 and present on every runtime in `engines`.
+ */
+const RUNTIME_CALENDARS = new Set(
+  Intl.supportedValuesOf('calendar').map((id) => id.toLowerCase()),
+)
+
+/**
+ * Can this Temporal build a calendar beyond the two every build has?
+ *
+ * The cast is needed because `Temporal` is not declared on `globalThis` in the type space, and
+ * daymath deliberately installs no global of its own.
+ * @param {unknown} candidate
+ * @returns {candidate is typeof bundledTemporal}
+ */
+/*
+ * Every branch here turns on `globalThis.Temporal`, which is read once at module load. A test in
+ * this process cannot change it after the fact, so none of these branches is reachable from the
+ * suite. They are covered three other ways, and each is real:
+ *
+ * 1. `test.js` spawns a CHILD process that installs the BASE polyfill global and then imports
+ *    daymath. That is the exact scenario this function exists for, and it asserts the four
+ *    calendars survive. A child's execution does not count toward this file's coverage.
+ * 2. The Node 20 and bun CI lanes have no native Temporal, so they take the fallback for real.
+ * 3. `npm run test:runtimes` proves every lane answers identically.
+ */
+/* c8 ignore start */
+function buildsExoticCalendars(candidate) {
+  const temporal = /** @type {typeof bundledTemporal | undefined} */ (candidate)
+  if (temporal?.PlainDate?.from === undefined) return false
+  // Ask the runtime for a calendar rather than naming one. The two excluded here are the pair every
+  // build can construct, so anything else proves the exotic calendar data is present.
+  const exotic = [...RUNTIME_CALENDARS].find((id) => id !== 'iso8601' && id !== 'gregory')
+  if (exotic === undefined) return true // nothing to prove it against
+  try {
+    temporal.PlainDate.from('2026-01-31').withCalendar(exotic)
+    return true
+  } catch {
+    return false
+  }
+}
+/* c8 ignore stop */
+
+// The fallback needs a runtime whose global Temporal is absent or not calendar-capable, so a process
+// with native Temporal cannot reach it. It is covered for real by the Node 20 and bun CI lanes, and
+// `npm run test:runtimes` proves those lanes answer identically to the native ones.
+// One cast, because `Temporal` is not declared on `globalThis` in the type space and daymath
+// deliberately installs no global of its own.
+const globalTemporal = /** @type {{Temporal?: unknown}} */ (globalThis).Temporal
+
+// The fallback needs a runtime whose global Temporal is absent or not calendar-capable, so a process
+// with native Temporal cannot reach it. It is covered for real by the Node 20 and bun CI lanes, and
+// `npm run test:runtimes` proves those lanes answer identically to the native ones.
+/* c8 ignore next */
+const Temporal = buildsExoticCalendars(globalTemporal) ? globalTemporal : bundledTemporal
 
 /**
  * ISO 8601 calendar day string:
@@ -82,7 +169,11 @@ function hasZoneAnnotation(text) {
 const ZONE_LIKE =
   /^(?:(?![Tt]\d)[A-Za-z][A-Za-z0-9_+.-]*(?:\/[A-Za-z0-9_+.-]+)*|[+-]\d{2}(?::?\d{2})?)$/u
 
-/** @typedef {string | Temporal.PlainDate} DayInput */
+// `Temporal` is a const now, not an imported namespace, so it cannot carry types. `PlainDate` has
+// seven use sites, so a typedef earns itself. `Instant` and `ZonedDateTime` have one each and are
+// inlined, because measured the typedef plus its use is longer than the inline form.
+/** @typedef {import('temporal-polyfill').Temporal.PlainDate} PlainDate */
+/** @typedef {string | PlainDate} DayInput */
 /**
  * @typedef {object} Interval
  * @property {DayInput} start
@@ -100,11 +191,9 @@ const ZONE_LIKE =
 /**
  * The bare ISO day inside a string, or `null` if there is not one.
  *
- * An annotation is dropped, not judged: `assertIsoCalendar` owns that rule and
- * runs before both callers, so by here the only calendar left is ISO. Temporal
- * writes `[u-ca=iso8601]` itself for `toString({ calendarName: 'always' })`, and
- * it names the very calendar daymath reads, so refusing a caller's own
- * round-trip would be arbitrary.
+ * An annotation is dropped here, never judged. `supportedCalendar` owns that rule, and the two do
+ * not run in a fixed order: `toPlainDate` judges first, and `day()` calls this first. That is safe
+ * precisely because this function strips the annotation without reading it.
  *
  * One predicate, because `toPlainDate` and `day()` both ask this question. They
  * asked it separately once, and day() alone then refused a string that every
@@ -119,21 +208,136 @@ function bareDay(text) {
 }
 
 /**
- * Refuse a non-ISO calendar, wherever the annotation is attached.
+ * Nine probe dates for the calendar rule below.
  *
- * Checked on the *string*, before any parse. Implementations disagree past this
- * point: native Temporal builds a `[u-ca=buddhist]` ZonedDateTime and the
- * polyfill refuses to, so parsing first made the error depend on the runtime.
+ * They span 1900 to 2100, they sit in different months, and two pairs straddle a Japanese era
+ * boundary: 1989-01-07/08 is Showa 64 into Heisei 1, and 2019-04-30/05-01 is Heisei 31 into
+ * Reiwa 1. An era change *inside* one ISO year is the case a single probe cannot see, and it is
+ * exactly what separates a year label from a year renumbering.
+ */
+const CALENDAR_PROBES = [
+  '1900-01-01',
+  '1900-07-01',
+  '1989-01-07',
+  '1989-01-08',
+  '2019-04-30',
+  '2019-05-01',
+  '2026-01-31',
+  '2026-12-31',
+  '2100-06-15',
+]
+
+/** @type {Map<string, {offset: number} | {reason: 'unknown' | 'renumbers'}>} */
+const calendarRuleCache = new Map()
+
+/**
+ * Is this a calendar the runtime actually names?
+ *
+ * **This is what bounds `calendarRuleCache`, and it is a memory-exhaustion fix.** The cache keys on
+ * whatever sits between `[u-ca=` and `]`, which is caller input.
+ *
+ * A shape guard was tried first and was only half a fix. It bounded the key LENGTH and not the
+ * entry COUNT, so any BCP-47-shaped string still bought a permanent entry: 800,000 distinct
+ * guard-passing ids retained 76.8 MB, growing linearly and never released. Case made it worse,
+ * because the shape test ignored case while the `Map` key did not, so one name had 256 keys.
+ *
+ * A closed set fixes both at once. `RUNTIME_CALENDARS` holds 18 ids on Node 26, so entries can
+ * never exceed what the runtime has, and a lowercased key collapses the case variants. It also
+ * needs no length cap and no pattern, which removes the last quadratic-regex risk from this file.
+ *
+ * The quiet path was `isValid`, which swallows the `RangeError`, so a loop raised nothing and
+ * logged nothing.
+ * @param {string} lowerId
+ */
+function runtimeKnowsCalendar(lowerId) {
+  return RUNTIME_CALENDARS.has(lowerId)
+}
+
+/**
+ * Measure whether a calendar only relabels the year.
+ *
+ * **This is a method, not a list.** Nothing here names a calendar, so a calendar CLDR adds later
+ * is admitted or refused by the same measurement, with no code change. Today it admits
+ * `buddhist` (+543), `roc` (−1911), `japanese` (0) and `gregory` (0), and refuses the other
+ * eleven the runtime knows.
+ *
+ * Two conditions, both required on every probe:
+ *
+ * 1. **Month and day equal the ISO fields.** A month-count test would be wrong: `hebrew` is
+ *    lunisolar, so `monthsInYear` is 13 in 2024, 12 in 2025 and 13 in 2027. Comparing the fields
+ *    is correct in every year.
+ * 2. **The year offset is constant.** `japanese` and `roc` pass condition 1, and Temporal reports
+ *    a continuous year for both, so both are pure labels — `roc` 1900 is −11, not "12 before".
+ *    Reading the year from `Intl` instead would fail here, because `Intl` reports the *era* year:
+ *    Reiwa 8 and B.R.O.C. 12. Temporal is the reference, so Temporal is what this asks.
+ *
+ * The verdict is cached per calendar. It cannot change while the process runs.
+ * @param {string} calendar
+ */
+function calendarRule(calendar) {
+  const cached = calendarRuleCache.get(calendar)
+  if (cached !== undefined) return cached
+  /** @type {{offset: number} | {reason: 'unknown' | 'renumbers'}} */
+  let verdict = { reason: 'renumbers' }
+  try {
+    const offsets = new Set()
+    for (const probe of CALENDAR_PROBES) {
+      const iso = Temporal.PlainDate.from(probe)
+      const dated = iso.withCalendar(calendar)
+      if (dated.month !== iso.month || dated.day !== iso.day) {
+        offsets.clear()
+        break
+      }
+      offsets.add(dated.year - iso.year)
+    }
+    // The offset is the discriminant — `'offset' in verdict` is what accepts — and the number
+    // itself is kept unread on purpose, so a debugger shows WHY a calendar passed.
+    if (offsets.size === 1) verdict = { offset: [...offsets][0] }
+  } catch {
+    // The runtime cannot build this calendar at all, which is a different message for the caller.
+    verdict = { reason: 'unknown' }
+  }
+  calendarRuleCache.set(calendar, verdict)
+  return verdict
+}
+
+/**
+ * Accept a calendar that only relabels the year, and refuse one that renumbers.
+ *
+ * Checked on the *string*, before any parse, so the outcome cannot depend on where the annotation
+ * sits. Returns the calendar for `toPlainDate` to carry, or `undefined` for plain ISO.
+ *
+ * `[u-ca=iso8601]` returns `undefined` rather than carrying: Temporal writes it itself for
+ * `toString({ calendarName: 'always' })`, and daymath already answers in it, so there is nothing
+ * to relabel.
  * @param {string} text
  * @param {string} label
+ * @returns {string | undefined}
  */
-function assertIsoCalendar(text, label) {
+function supportedCalendar(text, label) {
   const annotated = calendarAnnotation(text)
-  if (annotated && annotated.calendar.toLowerCase() !== 'iso8601') {
-    throw new RangeError(
-      `daymath: ${label} must use the ISO 8601 calendar, not ${JSON.stringify(annotated.calendar)} (convert with withCalendar('iso8601'))`,
-    )
-  }
+  // A bare `return` rather than `return undefined`: oxlint's no-useless-undefined forbids the
+  // explicit spelling, and "nothing to carry" is what both of these mean.
+  if (annotated === null) return
+  const { calendar } = annotated
+  // Lowercased once. BCP-47 keys are case-insensitive, and this is also the cache key, so the case
+  // variants of one name must collapse to one entry rather than 256.
+  const lowerId = calendar.toLowerCase()
+  if (lowerId === 'iso8601') return
+  // Membership FIRST, so an id the runtime does not name is never stored. See runtimeKnowsCalendar.
+  // One throw, not two: an unknown id and a renumbering one differ only in the reason.
+  const verdict = runtimeKnowsCalendar(lowerId)
+    ? calendarRule(lowerId)
+    : /** @type {const} */ ({ reason: 'unknown' })
+  if ('offset' in verdict) return calendar
+  const why =
+    verdict.reason === 'unknown'
+      ? 'is not a calendar this runtime knows'
+      : 'renumbers months or days, so daymath cannot answer a day in it'
+  // The id is sliced because it is caller input, so a megabyte in cannot become a megabyte of error.
+  throw new RangeError(
+    `daymath: ${label} calendar ${JSON.stringify(calendar.slice(0, 40))} ${why} (convert with withCalendar('iso8601'))`,
+  )
 }
 
 /**
@@ -142,7 +346,7 @@ function assertIsoCalendar(text, label) {
  * `instanceof` recognises only one of those. Every Temporal puts this tag on
  * `PlainDate.prototype` as a non-writable property, so it is the portable brand.
  * @param {unknown} value
- * @returns {value is Temporal.PlainDate} a predicate, so callers narrow
+ * @returns {value is PlainDate} a predicate, so callers narrow
  */
 function isPlainDate(value) {
   return Object.prototype.toString.call(value) === '[object Temporal.PlainDate]'
@@ -154,21 +358,12 @@ function isPlainDate(value) {
  * A PlainDate becomes its ISO day string first, so every input reaches one
  * validation path and daymath owns the resulting instance.
  *
- * A non-ISO calendar is refused rather than reinterpreted. `toString()` writes
- * the ISO date then an optional `[u-ca=…]`, so the *day* would survive — but
- * the field numbers would not. Thai Buddhist years run 543 ahead, so
- * `2026-01-31[u-ca=buddhist]` is year 2569, and `getYear` would answer `2026`
- * where the caller's own object says `2569`. A string carrying the annotation is
- * refused for the same reason, and the error names both the calendar it found
- * and the way through, `withCalendar('iso8601')`.
- *
- * `[u-ca=iso8601]` is the exception: it is accepted and dropped. Temporal writes
- * it itself for `toString({ calendarName: 'always' })`, and it names the very
- * calendar daymath reads, so refusing a caller's own round-trip would be
- * arbitrary.
+ * A calendar annotation is judged by `supportedCalendar` and then CARRIED, so `getYear` answers
+ * the caller's own number: `2026-01-31[u-ca=buddhist]` reads 2569, not 2026. The rule and the
+ * reasons live on `supportedCalendar`; this function only applies the verdict.
  * @param {unknown} value
  * @param {string} label
- * @returns {Temporal.PlainDate}
+ * @returns {PlainDate}
  */
 function toPlainDate(value, label = 'date') {
   if (value instanceof Date) {
@@ -184,7 +379,7 @@ function toPlainDate(value, label = 'date') {
     )
   }
   // Before the shape check: an annotated day is well formed, not malformed.
-  assertIsoCalendar(text, label)
+  const calendar = supportedCalendar(text, label)
   const bare = bareDay(text)
   if (bare === null) {
     throw new RangeError(
@@ -192,7 +387,10 @@ function toPlainDate(value, label = 'date') {
     )
   }
   try {
-    return Temporal.PlainDate.from(bare)
+    const plain = Temporal.PlainDate.from(bare)
+    // The annotation rides along, so getYear answers 2569 for a Buddhist day and every
+    // returned string keeps the calendar the caller named.
+    return calendar === undefined ? plain : plain.withCalendar(calendar)
   } catch (err) {
     throw new RangeError(`daymath: invalid ${label} ${JSON.stringify(text)}`, {
       cause: err,
@@ -200,7 +398,21 @@ function toPlainDate(value, label = 'date') {
   }
 }
 
-/** @param {Temporal.PlainDate} plain @returns {string} */
+/**
+ * The same day in ISO, for measurement only.
+ *
+ * Temporal refuses `since` and `until` across two calendars with `Mismatched calendars`, and its
+ * `equals` compares the calendar as well as the day. Neither matters to a day count: a day is the
+ * same day whatever the year is labelled, so daymath normalises and answers. Only the exports that
+ * *read* or *write* a field honour the label.
+ * @param {PlainDate} plain
+ * @returns {PlainDate}
+ */
+function isoOf(plain) {
+  return plain.calendarId === 'iso8601' ? plain : plain.withCalendar('iso8601')
+}
+
+/** @param {PlainDate} plain @returns {string} */
 function toDayString(plain) {
   return plain.toString()
 }
@@ -274,7 +486,7 @@ function weekStartsOnFrom(options) {
 
 /**
  * @param {unknown} interval
- * @returns {{ start: Temporal.PlainDate, end: Temporal.PlainDate }}
+ * @returns {{ start: PlainDate, end: PlainDate }}
  */
 function toInterval(interval) {
   // `typeof x === 'object'` alone let a Date, an array or a PlainDate through,
@@ -315,6 +527,16 @@ function toInterval(interval) {
  * - a string carrying a `[Zone]` annotation, which names its own zone, so it
  *   answers its own civil day and the `tz` default never applies
  *
+ * **day() is the normaliser, and that is the one rule to hold: a moment
+ * converts to a plain ISO day, and so does a day.** A `[u-ca=…]` annotation is
+ * accepted wherever the other 68 exports accept it, and then dropped from the
+ * result. Those exports carry it, because the caller asked for that numbering;
+ * day() exists to hand back the canonical form. It cannot do both, because an
+ * `Instant` has no fields for a calendar to renumber, so an annotation on
+ * `'…T20:00:00Z[u-ca=buddhist]'` is inert and that path has nothing to carry.
+ * Carrying only on the `[Zone]` path would make the same annotation behave two
+ * ways in one function.
+ *
  * `'11/12/2026'` is refused. Nobody can tell November from December in it.
  * `'2026-08-08T12:00'` is refused too: no offset and no zone, so daymath would
  * have to pick one, and it will not pick on the caller's behalf. Name the zone
@@ -335,7 +557,10 @@ function toInterval(interval) {
  *
  * @param {Date | number | DayInput | null} [moment] instant, epoch ms, day, or a zone
  * @param {string} [tz] IANA time zone id, e.g. `'utc'`, `'Asia/Tokyo'`
- * @returns {string} `YYYY-MM-DD`
+ * @returns {string} a plain ISO day. `YYYY-MM-DD`, or expanded `±YYYYYY-MM-DD` outside years
+ *   0000-9999 — the annotation said `YYYY-MM-DD` alone, which was already wrong for
+ *   `day('+010000-01-01')`. **Never carries `[u-ca=…]`.** day() is the normaliser, so a calendar
+ *   annotation is accepted on input and dropped from the result. Every other export carries it.
  * @throws {TypeError} If `moment` is not one of the accepted shapes
  * @throws {RangeError} On an Invalid Date, a non-finite number, or an unknown zone
  * @example day()                              // '2026-08-08'  now, UTC
@@ -355,9 +580,9 @@ export function day(moment, tz) {
   const isMoment = isDay || moment instanceof Date || typeof moment === 'number'
 
   let zone = tz
-  /** @type {Temporal.Instant | undefined} */
+  /** @type {import('temporal-polyfill').Temporal.Instant | undefined} */
   let instant
-  /** @type {Temporal.ZonedDateTime | undefined} */
+  /** @type {import('temporal-polyfill').Temporal.ZonedDateTime | undefined} */
   let zoned
   if (!isMoment && moment !== undefined && moment !== null) {
     if (typeof moment !== 'string') {
@@ -376,13 +601,11 @@ export function day(moment, tz) {
     // `'…[Asia/Tokoy]'` is a typo. Falling back to the instant would answer a
     // UTC day for both, silently, which is the defect this branch exists to fix.
     if (hasZoneAnnotation(moment)) {
-      // A calendar is refused only where it is applied. With a zone bracket it
-      // is: the fields get renumbered, and `toPlainDate()` carries the
-      // annotation into daymath's own output. Refused on the string, before the
-      // parse, because native Temporal builds a `[u-ca=buddhist]` ZonedDateTime
-      // and the polyfill refuses to — judging after the parse would make the
-      // message depend on the runtime.
-      assertIsoCalendar(moment, 'date')
+      // A calendar is judged only where it is applied. With a zone bracket it is: the fields get
+      // renumbered, and `toPlainDate()` carries the annotation into daymath's own output. Judged
+      // on the string, before the parse, so the message cannot depend on the runtime. A calendar
+      // that only relabels the year passes here, exactly as it does through toPlainDate.
+      supportedCalendar(moment, 'date')
       if (tz !== undefined && tz !== null) {
         throw new TypeError(
           `daymath: day() got two time zones, ${JSON.stringify(moment)} and ${JSON.stringify(tz)}`,
@@ -460,18 +683,23 @@ export function day(moment, tz) {
 
   // A day carries no time, so a zone has nothing to shift. Applying one would
   // invent a moment the caller never gave.
-  if (isDay) return toDayString(toPlainDate(moment))
+  //
+  // `isoOf` is what makes day() the normaliser. Every other export carries a
+  // `[u-ca=…]` annotation through, because the caller asked for that numbering.
+  // day() is the door: something that is not a plain ISO day goes in, and a
+  // plain ISO day comes out. Carrying it here also could not be made
+  // consistent, because an `Instant` has no fields for a calendar to renumber,
+  // so that path has nothing to carry and would answer bare ISO regardless.
+  if (isDay) return toDayString(isoOf(toPlainDate(moment)))
 
   // The string named its own zone, so that zone decides the day, not the
   // default. This is the one path where `zone` is deliberately not consulted.
   //
-  // The result still goes through `toPlainDate`. A ZonedDateTime keeps a
-  // `[u-ca=…]` annotation, and `PlainDate.toString()` writes it back out, so
-  // returning directly emitted `'2026-08-08[u-ca=buddhist]'` — a value daymath
-  // itself refuses. Every path adjudicates the calendar in one place or none.
+  // The result still goes through `toPlainDate`, so the calendar is adjudicated
+  // in one place, and then through `isoOf` for the reason above.
   if (zoned !== undefined) {
     const plain = guardRange('day', () => zoned.toPlainDate())
-    return toDayString(toPlainDate(plain))
+    return toDayString(isoOf(toPlainDate(plain)))
   }
 
   if (instant !== undefined) {
@@ -807,7 +1035,7 @@ export function startOfWeek(date, options) {
 
 /**
  * How far the day sits past the start of its week.
- * @param {Temporal.PlainDate} d
+ * @param {PlainDate} d
  * @param {WeekOptions} [options]
  * @returns {number}
  */
@@ -842,7 +1070,7 @@ export function endOfWeek(date, options) {
 export function differenceInDays(dateLeft, dateRight) {
   const left = toPlainDate(dateLeft, 'dateLeft')
   const right = toPlainDate(dateRight, 'dateRight')
-  return left.since(right, { largestUnit: 'day' }).days
+  return isoOf(left).since(isoOf(right), { largestUnit: 'day' }).days
 }
 
 /**
@@ -871,8 +1099,12 @@ export function differenceInWeeks(dateLeft, dateRight) {
  * @returns {number}
  */
 export function differenceInMonths(dateLeft, dateRight) {
-  const left = toPlainDate(dateLeft, 'dateLeft')
-  const right = toPlainDate(dateRight, 'dateRight')
+  // `isoOf` on both, like differenceInDays. Without it this function read TWO coordinate systems
+  // at once: the sign came from `compare`, which ignores the calendar, and the magnitude came from
+  // `differenceInCalendarMonths`, which does not. A mixed pair then measured 6,513 months for a
+  // 29-day gap, and two days 543 ISO years apart measured 0.
+  const left = isoOf(toPlainDate(dateLeft, 'dateLeft'))
+  const right = isoOf(toPlainDate(dateRight, 'dateRight'))
   const sign = Temporal.PlainDate.compare(left, right)
   if (sign === 0) return 0
   const diff = Math.abs(differenceInCalendarMonths(left, right))
@@ -894,8 +1126,8 @@ export function differenceInMonths(dateLeft, dateRight) {
  * @returns {number}
  */
 export function differenceInCalendarMonths(dateLeft, dateRight) {
-  const left = toPlainDate(dateLeft, 'dateLeft')
-  const right = toPlainDate(dateRight, 'dateRight')
+  const left = isoOf(toPlainDate(dateLeft, 'dateLeft'))
+  const right = isoOf(toPlainDate(dateRight, 'dateRight'))
   return (left.year - right.year) * 12 + (left.month - right.month)
 }
 
@@ -910,8 +1142,9 @@ export function differenceInCalendarMonths(dateLeft, dateRight) {
  * @returns {number}
  */
 export function differenceInYears(dateLeft, dateRight) {
-  const left = toPlainDate(dateLeft, 'dateLeft')
-  const right = toPlainDate(dateRight, 'dateRight')
+  // `isoOf` on both: a measurement, so it ignores the year LABEL. See differenceInMonths.
+  const left = isoOf(toPlainDate(dateLeft, 'dateLeft'))
+  const right = isoOf(toPlainDate(dateRight, 'dateRight'))
   const sign = Temporal.PlainDate.compare(left, right)
   if (sign === 0) return 0
   const diff = Math.abs(left.year - right.year)
@@ -937,7 +1170,12 @@ export function differenceInYears(dateLeft, dateRight) {
  * @returns {number}
  */
 export function differenceInCalendarYears(dateLeft, dateRight) {
-  return getYear(dateLeft) - getYear(dateRight)
+  // NOT getYear: that is a field read and honours the label, so a mixed pair subtracted two
+  // different year spaces and answered 0 for days 543 ISO years apart.
+  return (
+    isoOf(toPlainDate(dateLeft, 'dateLeft')).year -
+    isoOf(toPlainDate(dateRight, 'dateRight')).year
+  )
 }
 
 /**
@@ -959,8 +1197,8 @@ export function differenceInQuarters(dateLeft, dateRight) {
  * @returns {number}
  */
 export function differenceInCalendarQuarters(dateLeft, dateRight) {
-  const left = toPlainDate(dateLeft, 'dateLeft')
-  const right = toPlainDate(dateRight, 'dateRight')
+  const left = isoOf(toPlainDate(dateLeft, 'dateLeft'))
+  const right = isoOf(toPlainDate(dateRight, 'dateRight'))
   return (left.year - right.year) * 4 + (getQuarter(left) - getQuarter(right))
 }
 
@@ -1022,10 +1260,15 @@ export function isSameWeek(dateLeft, dateRight, options) {
   const left = toPlainDate(dateLeft, 'dateLeft')
   const right = toPlainDate(dateRight, 'dateRight')
   // own guard, so a week start below the minimum does not say startOfWeek
-  return guardRange('isSameWeek', () =>
-    left
-      .subtract({ days: daysIntoWeek(left, options) })
-      .equals(right.subtract({ days: daysIntoWeek(right, options) })),
+  // compare, not equals: Temporal's equals compares the calendar as well as the day, so it
+  // answers false for the same week in two calendars. compare reads the ISO fields alone.
+  return guardRange(
+    'isSameWeek',
+    () =>
+      Temporal.PlainDate.compare(
+        left.subtract({ days: daysIntoWeek(left, options) }),
+        right.subtract({ days: daysIntoWeek(right, options) }),
+      ) === 0,
   )
 }
 
@@ -1035,8 +1278,8 @@ export function isSameWeek(dateLeft, dateRight, options) {
  * @returns {boolean}
  */
 export function isSameMonth(dateLeft, dateRight) {
-  const a = toPlainDate(dateLeft, 'dateLeft')
-  const b = toPlainDate(dateRight, 'dateRight')
+  const a = isoOf(toPlainDate(dateLeft, 'dateLeft'))
+  const b = isoOf(toPlainDate(dateRight, 'dateRight'))
   return a.year === b.year && a.month === b.month
 }
 
@@ -1046,7 +1289,12 @@ export function isSameMonth(dateLeft, dateRight) {
  * @returns {boolean}
  */
 export function isSameYear(dateLeft, dateRight) {
-  return getYear(dateLeft) === getYear(dateRight)
+  // NOT getYear, for the same reason as differenceInCalendarYears: two days 543 ISO years apart
+  // both read year 2569 once one of them carries a Buddhist label, and this answered true.
+  return (
+    isoOf(toPlainDate(dateLeft, 'dateLeft')).year ===
+    isoOf(toPlainDate(dateRight, 'dateRight')).year
+  )
 }
 
 /**
@@ -1055,8 +1303,8 @@ export function isSameYear(dateLeft, dateRight) {
  * @returns {boolean}
  */
 export function isSameQuarter(dateLeft, dateRight) {
-  const a = toPlainDate(dateLeft, 'dateLeft')
-  const b = toPlainDate(dateRight, 'dateRight')
+  const a = isoOf(toPlainDate(dateLeft, 'dateLeft'))
+  const b = isoOf(toPlainDate(dateRight, 'dateRight'))
   return a.year === b.year && getQuarter(a) === getQuarter(b)
 }
 
@@ -1221,12 +1469,18 @@ export function eachYearOfInterval(interval) {
   }
   /** @type {string[]} */
   const out = []
-  let y = start.year
-  // Jan 1 of start's year can sit below the minimum PlainDate
+  // `with` then `add`, never `PlainDate.from({year})`: both keep start's calendar, and the object
+  // form would read `year` as an ISO year, which is 543 years out for a Buddhist day.
+  // Jan 1 of start's year can sit below the minimum PlainDate.
   guardRange('eachYearOfInterval', () => {
-    while (y <= end.year) {
-      out.push(toDayString(Temporal.PlainDate.from({ year: y, month: 1, day: 1 })))
-      y += 1
+    // Compare ISO years, then add. Testing the loop condition AFTER the push is what keeps the
+    // top edge working: Jan 1 of +275760 is valid, and adding a year to it is not.
+    const lastIsoYear = isoOf(end).year
+    let cur = start.with({ month: 1, day: 1 })
+    for (;;) {
+      out.push(toDayString(cur))
+      if (isoOf(cur).year >= lastIsoYear) break
+      cur = cur.add({ years: 1 })
     }
   })
   return out
