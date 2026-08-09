@@ -28,6 +28,11 @@
     "test:differential:quick": "node scripts/differential.mjs 2020 2030",
     "test:runtimes": "node scripts/cross-runtime.mjs",
     "test:runtimes:write": "node scripts/cross-runtime.mjs --write",
+    "test:intl-day": "node scripts/intl-day.mjs",
+    "test:intl-day:sweep": "node scripts/intl-day.mjs --sweep",
+    "size": "node scripts/bundle-size.mjs --run",
+    "size:check": "node scripts/bundle-size.mjs --check",
+    "size:write": "node scripts/bundle-size.mjs --write",
     "prepublishOnly": "npm run test:coverage",
     "publish:github": "node scripts/publish-github-packages.mjs"
   },
@@ -62,6 +67,7 @@
   "devDependencies": {
     "c8": "^12.0.0",
     "date-fns": "4.4.0",
+    "esbuild": "0.28.1",
     "oxfmt": "0.62.0",
     "oxlint": "1.77.0",
     "typescript": "7.0.2"
