@@ -83,6 +83,31 @@ const MOMENTS = [
   -8_640_000_000_000_000,
 ]
 
+/**
+ * The Julian-to-Gregorian reform windows, named explicitly.
+ *
+ * `cal 9 1752` prints 2 then 14, because Unix `cal` models the British calendar, where 3 to 13
+ * September 1752 never happened. ISO 8601 has no such hole: it is proleptic Gregorian and extends
+ * backwards forever. ECMA-402 requires the `gregory` calendar to be proleptic too, so `Intl`
+ * agrees. These moments assert that, because the random spread above cannot find a 20-day window
+ * inside a 547,000-year range.
+ */
+for (const [y, m, d] of [
+  [1752, 9, 2], // British reform, the last Julian day
+  [1752, 9, 3], // inside the British gap
+  [1752, 9, 13], // inside the British gap
+  [1752, 9, 14], // British reform, the first Gregorian day
+  [1582, 10, 4], // papal reform, the last Julian day
+  [1582, 10, 5], // inside the papal gap
+  [1582, 10, 14], // inside the papal gap
+  [1582, 10, 15], // papal reform, the first Gregorian day
+  [1918, 1, 31], // Russian reform
+  [1918, 2, 14],
+  [1923, 9, 30], // Greek reform, the last of them
+]) {
+  MOMENTS.push(Date.UTC(y, m - 1, d, 12))
+}
+
 // Seeded, so the run repeats. Math.random() would make a failure unreproducible.
 let seed = 20_260_809
 const nextRandom = () =>
