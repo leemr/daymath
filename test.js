@@ -547,6 +547,23 @@ describe('a PlainDate from another Temporal implementation', () => {
     // An impossible day inside a valid annotation still fails as a day.
     assert.throws(() => parse('2026-02-30[u-ca=iso8601]'), /invalid date/)
 
+    // Bracket shapes that are not annotations, each reading as a malformed day.
+    // The annotation is found by lastIndexOf rather than by a pattern, because
+    // `^(.*)\[…\]$` backtracks: '[u-ca='.repeat(64000) cost 9.0 seconds, and
+    // CodeQL js/polynomial-redos reported it before any timing was taken.
+    for (const bad of [
+      '2026-01-31]', // a closing bracket with no opening one
+      '2026-01-31[u-ca=]', // an empty calendar
+      '[u-ca=[u-ca=[u-ca=x]]]', // brackets that do not nest as they appear
+    ]) {
+      assert.throws(() => parse(bad), /must be ISO 8601 day/)
+    }
+    // An unclosed bracket names no zone, so day() reads it as neither role.
+    assert.throws(
+      () => dm.day('2026-08-08T12:00[America'),
+      /which is neither a moment nor a time zone/,
+    )
+
     // day() shares one predicate with every other export, so it must agree with
     // them on every annotated spelling. It refused all of these once.
     for (const s of [written, '2026-01-31[!u-ca=iso8601]', '2026-01-31[u-ca=ISO8601]']) {

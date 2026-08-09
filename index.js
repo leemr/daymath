@@ -18,24 +18,54 @@ const ISO_DAY = /^(?:[+-]\d{6}|\d{4})-\d{2}-\d{2}$/u
 
 /**
  * Temporal's calendar annotation, `[u-ca=…]` or the critical `[!u-ca=…]`.
+ * Returns what it is attached to, and the calendar it names, or `null`.
  *
- * Anchored at both ends. An unanchored scan restarts at every position, which
- * costs quadratic time on a long adversarial string. Group 1 is whatever the
- * annotation is attached to — a day, or a whole timestamp with its own zone
- * bracket — so one regex answers the calendar question for every input shape.
+ * String operations, not a regex, and the reason is measured. The annotation can
+ * sit behind another one — `'…[America/New_York][u-ca=buddhist]'` — so the head
+ * may itself contain `[`. A pattern that allows that needs `^(.*)\[…\]$`, whose
+ * `.*` backtracks: `'[u-ca='.repeat(64000)` cost 9.0 s, growing with the square
+ * of the input. `lastIndexOf` answers the same question in one pass. CodeQL
+ * `js/polynomial-redos` caught the regex form; timing it confirmed the report.
+ * @param {string} text
+ * @returns {{ head: string, calendar: string } | null}
  */
-const CALENDAR_ANNOTATION = /^(.*)\[!?u-ca=([^\]]+)\]$/u
+function calendarAnnotation(text) {
+  if (!text.endsWith(']')) return null
+  const open = text.lastIndexOf('[')
+  if (open === -1) return null
+  const inner = text.slice(open + 1, -1)
+  const body = inner.startsWith('!') ? inner.slice(1) : inner
+  if (!body.startsWith('u-ca=')) return null
+  const calendar = body.slice(5)
+  // A `]` inside means the brackets do not nest as they appear, so this is not
+  // an annotation. `'[u-ca=[u-ca=[u-ca=x]]]'` reads as the calendar `x]]` here
+  // and as a malformed day everywhere else, which is what it is.
+  if (calendar === '' || calendar.includes(']')) return null
+  return { head: text.slice(0, open), calendar }
+}
 
 /**
- * Temporal's time-zone annotation, `[Zone]` or the critical `[!Zone]`. It is the
- * one annotation with no `=`, which is what separates it from `[u-ca=…]`.
+ * True when the string carries a time-zone annotation, `[Zone]` or `[!Zone]`.
+ * It is the one annotation with no `=`, which separates it from `[u-ca=…]`, and
+ * Temporal writes it first, so only the leading bracket can be one.
  *
  * Asking "does the string name a zone?" is a different question from "does it
  * resolve?". A string can name one and still fail: an offset that disagrees with
  * the zone, or a misspelled name. Both must be errors, never a silent fallback
  * to the UTC default.
+ *
+ * String operations again. An unanchored `/\[!?[^\]=]+\]/` restarts at every
+ * position: `'[!'.repeat(64000)` cost 6.8 s, and it is the same defect an
+ * earlier commit removed from the calendar pattern.
+ * @param {string} text
  */
-const ZONE_ANNOTATION = /\[!?[^\]=]+\]/u
+function hasZoneAnnotation(text) {
+  const open = text.indexOf('[')
+  if (open === -1) return false
+  const close = text.indexOf(']', open)
+  if (close === -1) return false
+  return !text.slice(open + 1, close).includes('=')
+}
 
 /**
  * A time zone, by shape: an IANA name, or a bare offset.
@@ -83,8 +113,8 @@ const ZONE_LIKE =
  * @returns {string | null}
  */
 function bareDay(text) {
-  const annotated = CALENDAR_ANNOTATION.exec(text)
-  const bare = annotated ? annotated[1] : text
+  const annotated = calendarAnnotation(text)
+  const bare = annotated ? annotated.head : text
   return ISO_DAY.test(bare) ? bare : null
 }
 
@@ -98,10 +128,10 @@ function bareDay(text) {
  * @param {string} label
  */
 function assertIsoCalendar(text, label) {
-  const annotated = CALENDAR_ANNOTATION.exec(text)
-  if (annotated && annotated[2].toLowerCase() !== 'iso8601') {
+  const annotated = calendarAnnotation(text)
+  if (annotated && annotated.calendar.toLowerCase() !== 'iso8601') {
     throw new RangeError(
-      `daymath: ${label} must use the ISO 8601 calendar, not ${JSON.stringify(annotated[2])} (convert with withCalendar('iso8601'))`,
+      `daymath: ${label} must use the ISO 8601 calendar, not ${JSON.stringify(annotated.calendar)} (convert with withCalendar('iso8601'))`,
     )
   }
 }
@@ -345,7 +375,7 @@ export function day(moment, tz) {
     // `'…-05:00[America/New_York]'` has an offset the zone contradicts, and
     // `'…[Asia/Tokoy]'` is a typo. Falling back to the instant would answer a
     // UTC day for both, silently, which is the defect this branch exists to fix.
-    if (ZONE_ANNOTATION.test(moment)) {
+    if (hasZoneAnnotation(moment)) {
       // A calendar is refused only where it is applied. With a zone bracket it
       // is: the fields get renumbered, and `toPlainDate()` carries the
       // annotation into daymath's own output. Refused on the string, before the
