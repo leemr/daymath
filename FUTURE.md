@@ -15,18 +15,37 @@ start until that call is answered.
 | # | Name | What it does | Blocked by | Version |
 |---|---|---|---|---|
 | — | **Bundle rig** | the size gate and the Intl harness | — | no release |
-| 1 | **Runtime calendar split** | extend `npm run test:runtimes` for the native-vs-shim disagreement | — | no release |
-| 2 | **Calendars** | accept `[u-ca=buddhist]` and `[u-ca=roc]`; widen `assertIsoCalendar` | Mixed pair · Japanese era | 0.5.0 |
-| 3 | **fns port** | rewrite the internal `Temporal.` call sites onto `fns` | Orphan days · 1 · 2 | 0.6.0 |
-| 4 | **Size badge** | `docs/size.json` and a shields endpoint, so history lives in git | Bundle rig | no release |
-| 5 | **Business days** | business-day helpers and the ISO week suite | — | 0.7.0 |
-| 6 | **npm provenance** | publish from Actions with OIDC instead of a laptop token | — | mechanics |
-| 7 | **JSDoc examples** | deeper `@example` on the hot exports | — | patch |
-| 8 | **Awesome-list** | submit to an existing awesome list | a stable API | external |
+| 1 | **Calendars** | accept `[u-ca=buddhist]` and `[u-ca=roc]`; widen `assertIsoCalendar` | Mixed pair · Japanese era | 0.5.0 |
+| 2 | **fns port** | rewrite the internal `Temporal.` call sites onto `fns` | Orphan days · 1 | 0.6.0 |
+| 3 | **Size badge** | `docs/size.json` and a shields endpoint, so history lives in git | Bundle rig | no release |
+| 4 | **Business days** | business-day helpers and the ISO week suite | — | 0.7.0 |
+| 5 | **npm provenance** | publish from Actions with OIDC instead of a laptop token | — | mechanics |
+| 6 | **JSDoc examples** | deeper `@example` on the hot exports | — | patch |
+| 7 | **Awesome-list** | submit to an existing awesome list | a stable API | external |
 
-**Runtime calendar split goes first** because it is the net that catches the calendar behaviour
-differing by runtime, and it needs no product call. It does not depend on Calendars; the split
-exists today, while daymath still refuses every non-ISO calendar.
+**There is no "extend `test:runtimes` for the calendar split" row, and there must not be one.**
+That row was drafted and then measured away, so the reason is recorded here rather than repeated.
+
+The native-vs-shim calendar disagreement is real, but it lives inside `temporal-polyfill/fns`,
+which daymath does not use yet. The class API has no such split: `assertIsoCalendar` reads the
+annotation out of the string before Temporal is asked to build a calendar, so the polyfill's
+`Unknown calendar hebrew` never surfaces. Both paths answer with the same daymath `RangeError`,
+character for character, verified by deleting `globalThis.Temporal`.
+
+**The net that will catch the port's hazard already exists.** `scripts/battery.mjs` carries
+`'2026-01-31[u-ca=buddhist]'` and `'2026-01-31[!u-ca=buddhist]'` in `JUNK`, and CI runs both
+Temporal paths:
+
+| lane | Temporal |
+|---|---|
+| Node 20 | `temporal-polyfill` |
+| Node 26 | native |
+| deno | native |
+| bun | `temporal-polyfill` |
+
+A port that reached the fns layer with `getISO` would answer `2026` on the shim lanes where the
+native lanes throw. The hash for `getYear` would move, and Node 20 and bun would go red. So the
+port needs no new harness — it needs the existing one to stay green.
 
 ### Product calls that block a row
 
