@@ -280,25 +280,30 @@ describe('day() — the one export that reads a clock', () => {
     // which returned '2026-08-08[u-ca=buddhist]' once — a value daymath refuses.
     // It is settled on the string, before the parse, because native Temporal
     // builds such a ZonedDateTime and the polyfill refuses to.
-    // A calendar that only relabels the year passes, and the annotation rides along, exactly as
-    // it does through every other export. One that renumbers is still refused.
+    // A calendar that only relabels the year is ACCEPTED here, exactly as it is everywhere else.
+    // But day() is the normaliser, so it drops the annotation instead of carrying it. Every other
+    // export carries it; day() hands back the canonical form.
     for (const s of [
       '2026-08-08T12:00[America/New_York][u-ca=buddhist]',
       '2026-08-08T12:00[America/New_York][!u-ca=buddhist]',
+      '2026-08-08T12:00[UTC][u-ca=gregory]',
     ]) {
-      assert.equal(dm.day(s), '2026-08-08[u-ca=buddhist]')
+      assert.equal(dm.day(s), '2026-08-08')
     }
-    assert.equal(
-      dm.day('2026-08-08T12:00[UTC][u-ca=gregory]'),
-      '2026-08-08[u-ca=gregory]',
-    )
+    // Which is what makes the three input shapes agree. Carrying on the [Zone] path while an
+    // Instant has nothing to carry would give one annotation two behaviours in one function.
+    assert.equal(dm.day('2026-08-08T20:00:00Z[u-ca=buddhist]'), '2026-08-08') // inert
+    assert.equal(dm.day('2026-08-08[u-ca=buddhist]'), '2026-08-08') // already a day
+    // parse KEEPS it, and that difference is the point: parse validates, day normalises.
+    assert.equal(parse('2026-08-08[u-ca=buddhist]'), '2026-08-08[u-ca=buddhist]')
+    // A renumbering calendar is still refused, wherever it is applied.
     assert.throws(
       () => dm.day('1999-06-06[Asia/Tokyo][u-ca=hebrew]'),
       /renumbers months or days/,
     )
-    // Without a zone bracket the calendar is inert, so it is ignored rather than
-    // refused. An Instant has no year, month or day for a calendar to renumber.
-    assert.equal(dm.day('2026-08-08T20:00:00Z[u-ca=buddhist]'), '2026-08-08')
+    // Without a zone bracket the calendar is inert, so there is nothing to renumber and nothing
+    // to drop. An Instant has no year, month or day at all.
+    assert.equal(dm.day('2026-08-08T20:00:00-04:00[u-ca=buddhist]'), '2026-08-09')
     assert.equal(dm.day('2026-08-08T20:00:00-04:00[u-ca=buddhist]'), '2026-08-09')
     // And it accepts the one annotation daymath accepts anywhere else.
     assert.equal(dm.day('2026-08-08T12:00[America/New_York][u-ca=iso8601]'), '2026-08-08')
@@ -530,7 +535,7 @@ describe('a PlainDate from another Temporal implementation', () => {
     assert.equal(dm.getDate(buddhist), 31)
     assert.equal(dm.addDays(buddhist, 1), '2026-02-01[u-ca=buddhist]')
     assert.equal(dm.setYear(buddhist, 2570), '2027-01-31[u-ca=buddhist]')
-    assert.equal(dm.day(buddhist), '2026-01-31[u-ca=buddhist]')
+    assert.equal(dm.day(buddhist), '2026-01-31') // day() normalises; the others carry
     assert.equal(parse('2026-01-31[u-ca=buddhist]'), '2026-01-31[u-ca=buddhist]')
     // The critical spelling is accepted too: daymath now understands the annotation, which is
     // exactly what the `!` asks a reader to confirm before proceeding.
@@ -567,6 +572,33 @@ describe('a PlainDate from another Temporal implementation', () => {
     for (const y of ['2024', '2025', '2026', '2027']) {
       assert.throws(() => dm.getMonth(`${y}-01-31[u-ca=hebrew]`), /renumbers/)
     }
+    // THE TRAP, pinned as a test because it is the one way to get a wrong answer with no error.
+    // Buddhist 2567 is ISO 2024, a leap year. But 2567 read as an ISO year is not, because the
+    // offset is 543 and 543 mod 4 is 3, so the leap years land in different places. Passing the
+    // calendar's own year as a bare ISO year therefore breaks February, silently.
+    assert.equal(dm.isLeapYear('2024-01-01[u-ca=buddhist]'), true) // the real Buddhist 2567
+    assert.equal(dm.getYear('2024-01-01[u-ca=buddhist]'), 2567) // control
+    assert.equal(dm.isLeapYear('2567-01-01'), false) // 2567 read as ISO
+    assert.equal(dm.getDaysInMonth('2024-02-01[u-ca=buddhist]'), 29)
+    assert.equal(dm.getDaysInMonth('2567-02-01'), 28)
+    assert.equal(dm.addDays('2024-02-28[u-ca=buddhist]', 1), '2024-02-29[u-ca=buddhist]')
+    assert.equal(dm.addDays('2567-02-28', 1), '2567-03-01') // looks fine, is a day early
+    assert.throws(() => parse('2567-02-29'), /invalid date/) // the day exists in Buddhist 2567
+    // 49 of the 101 Buddhist years from 2500 to 2600 disagree, so this is not an edge case.
+    let disagreements = 0
+    for (let b = 2500; b <= 2600; b++) {
+      const asIso = dm.isLeapYear(`${b}-01-01`)
+      const real = dm.isLeapYear(
+        `${String(b - 543).padStart(4, '0')}-01-01[u-ca=buddhist]`,
+      )
+      if (asIso !== real) disagreements++
+    }
+    assert.equal(disagreements, 49)
+
+    // And the double shift, for the same reason: the date part is ISO and the annotation adds on
+    // top of it, so a Buddhist year written into the date part is 543 years out twice over.
+    assert.equal(dm.getYear('2569-08-08[u-ca=buddhist]'), 3112)
+
     // A calendar the runtime cannot build at all gets its own message, so a typo is not read as
     // a renumbering calendar.
     assert.throws(() => parse('2026-01-31[u-ca=buddhst]'), {
@@ -610,9 +642,9 @@ describe('a PlainDate from another Temporal implementation', () => {
     for (const s of [written, '2026-01-31[!u-ca=iso8601]', '2026-01-31[u-ca=ISO8601]']) {
       assert.equal(dm.day(s), iso, `day(${JSON.stringify(s)}) must match parse`)
     }
-    // And on an accepted calendar, where both must carry the annotation through.
-    assert.equal(dm.day('2026-01-31[u-ca=buddhist]'), '2026-01-31[u-ca=buddhist]')
-    assert.equal(parse('2026-01-31[u-ca=buddhist]'), dm.day('2026-01-31[u-ca=buddhist]'))
+    // And on an accepted calendar, where they agree on ACCEPTING and differ on the result.
+    assert.equal(dm.day('2026-01-31[u-ca=buddhist]'), iso) // day() normalises
+    assert.equal(parse('2026-01-31[u-ca=buddhist]'), '2026-01-31[u-ca=buddhist]') // parse carries
     // And on a refused one, with the same wording from both.
     assert.throws(() => dm.day('2026-01-31[u-ca=hebrew]'), /renumbers months or days/)
     assert.throws(() => parse('2026-01-31[u-ca=hebrew]'), /renumbers months or days/)

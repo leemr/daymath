@@ -57,12 +57,14 @@ export type WeekOptions = {
  * instant, then a zone. The zone test is by shape — an IANA name, which carries
  * no `:`, or a bare offset — so a timestamp can never be read as a zone.
  *
- * A calendar is judged only where it is applied, which means with a `[Zone]`
- * bracket. An accepted calendar rides along, so
- * `day('2026-08-08T12:00[America/New_York][u-ca=buddhist]')` answers
- * `'2026-08-08[u-ca=buddhist]'` and the result is not always bare `YYYY-MM-DD`.
- * Without a zone bracket the string names an `Instant`, which has no fields for
- * a calendar to renumber, so the annotation is inert and is dropped.
+ * **day() is the normaliser, and that is the whole rule: a moment converts to a
+ * plain ISO day, and so does a day.** A `[u-ca=…]` annotation is accepted
+ * wherever the other exports accept it, and then dropped from the result, so
+ * `day` never returns `[u-ca=…]`. Every other export carries it. `parse`
+ * validates and preserves; `day` normalises.
+ *
+ * A calendar that renumbers months or days is still refused where it is
+ * applied, which means with a `[Zone]` bracket and on a day string.
  */
 export function day(tz?: string): string
 export function day(

@@ -414,6 +414,16 @@ function toInterval(interval) {
  * - a string carrying a `[Zone]` annotation, which names its own zone, so it
  *   answers its own civil day and the `tz` default never applies
  *
+ * **day() is the normaliser, and that is the one rule to hold: a moment
+ * converts to a plain ISO day, and so does a day.** A `[u-ca=…]` annotation is
+ * accepted wherever the other 68 exports accept it, and then dropped from the
+ * result. Those exports carry it, because the caller asked for that numbering;
+ * day() exists to hand back the canonical form. It cannot do both, because an
+ * `Instant` has no fields for a calendar to renumber, so an annotation on
+ * `'…T20:00:00Z[u-ca=buddhist]'` is inert and that path has nothing to carry.
+ * Carrying only on the `[Zone]` path would make the same annotation behave two
+ * ways in one function.
+ *
  * `'11/12/2026'` is refused. Nobody can tell November from December in it.
  * `'2026-08-08T12:00'` is refused too: no offset and no zone, so daymath would
  * have to pick one, and it will not pick on the caller's behalf. Name the zone
@@ -434,10 +444,10 @@ function toInterval(interval) {
  *
  * @param {Date | number | DayInput | null} [moment] instant, epoch ms, day, or a zone
  * @param {string} [tz] IANA time zone id, e.g. `'utc'`, `'Asia/Tokyo'`
- * @returns {string} an ISO day string. `YYYY-MM-DD` in the common case, expanded to
- *   `±YYYYYY-MM-DD` outside years 0000-9999, and carrying `[u-ca=…]` when the input named a
- *   calendar daymath accepts. This annotation said `YYYY-MM-DD` alone, which was already wrong
- *   for `day('+010000-01-01')`.
+ * @returns {string} a plain ISO day. `YYYY-MM-DD`, or expanded `±YYYYYY-MM-DD` outside years
+ *   0000-9999 — the annotation said `YYYY-MM-DD` alone, which was already wrong for
+ *   `day('+010000-01-01')`. **Never carries `[u-ca=…]`.** day() is the normaliser, so a calendar
+ *   annotation is accepted on input and dropped from the result. Every other export carries it.
  * @throws {TypeError} If `moment` is not one of the accepted shapes
  * @throws {RangeError} On an Invalid Date, a non-finite number, or an unknown zone
  * @example day()                              // '2026-08-08'  now, UTC
@@ -560,18 +570,23 @@ export function day(moment, tz) {
 
   // A day carries no time, so a zone has nothing to shift. Applying one would
   // invent a moment the caller never gave.
-  if (isDay) return toDayString(toPlainDate(moment))
+  //
+  // `isoOf` is what makes day() the normaliser. Every other export carries a
+  // `[u-ca=…]` annotation through, because the caller asked for that numbering.
+  // day() is the door: something that is not a plain ISO day goes in, and a
+  // plain ISO day comes out. Carrying it here also could not be made
+  // consistent, because an `Instant` has no fields for a calendar to renumber,
+  // so that path has nothing to carry and would answer bare ISO regardless.
+  if (isDay) return toDayString(isoOf(toPlainDate(moment)))
 
   // The string named its own zone, so that zone decides the day, not the
   // default. This is the one path where `zone` is deliberately not consulted.
   //
-  // The result still goes through `toPlainDate`. A ZonedDateTime keeps a
-  // `[u-ca=…]` annotation, and `PlainDate.toString()` writes it back out, so
-  // returning directly emitted `'2026-08-08[u-ca=buddhist]'` — a value daymath
-  // itself refuses. Every path adjudicates the calendar in one place or none.
+  // The result still goes through `toPlainDate`, so the calendar is adjudicated
+  // in one place, and then through `isoOf` for the reason above.
   if (zoned !== undefined) {
     const plain = guardRange('day', () => zoned.toPlainDate())
-    return toDayString(toPlainDate(plain))
+    return toDayString(isoOf(toPlainDate(plain)))
   }
 
   if (instant !== undefined) {

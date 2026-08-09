@@ -248,13 +248,69 @@ getYear(written)                                                // 2026
 
 A calendar is judged where it is **applied**. On a day string it is, and with a `[Zone]` bracket
 it is. Without a bracket the string names an `Instant`, which has no year, month or day for a
-calendar to renumber, so the annotation is inert:
+calendar to renumber, so the annotation is inert.
+
+**`day()` accepts every annotation the other exports accept, and drops it from the result.** It is
+the normaliser: a moment converts to a plain ISO day, and so does a day. One rule, three input
+shapes:
 
 ```js
-day('2026-08-08T20:00:00Z[u-ca=buddhist]')                  // '2026-08-08'  inert, dropped
-day('2026-08-08T12:00[America/New_York][u-ca=buddhist]')    // '2026-08-08[u-ca=buddhist]'
+day('2026-08-08T20:00:00Z[u-ca=buddhist]')                  // '2026-08-08'
+day('2026-08-08T12:00[America/New_York][u-ca=buddhist]')    // '2026-08-08'
+day('2026-08-08[u-ca=buddhist]')                            // '2026-08-08'
 day('1999-06-06[Asia/Tokyo][u-ca=hebrew]')                  // throws
+
+parse('2026-08-08[u-ca=buddhist]')     // '2026-08-08[u-ca=buddhist]'  parse keeps it
 ```
+
+`parse` validates and preserves. `day()` normalises. Every other export carries the annotation,
+because the caller asked for that numbering.
+
+### Working in a non-ISO calendar
+
+**Do not pass the calendar's own year as a bare ISO year.** This is the one way to get a wrong
+answer with no error, and it is why the annotation is not decoration.
+
+Buddhist 2567 is ISO 2024, which is a leap year. The Buddhist year is ISO + 543, and 543 mod 4 is
+3, so the leap years land in different places:
+
+| call | bare `2567` | annotated, the real Buddhist 2567 |
+|---|---|---|
+| `isLeapYear` | `false` | `true` |
+| `getDaysInMonth` for February | `28` | `29` |
+| `parse('…-02-29')` | throws `invalid date` | `2024-02-29[u-ca=buddhist]` |
+| `addDays(Feb 28, 1)` | `2567-03-01` | `2024-02-29[u-ca=buddhist]` |
+
+**The two disagree in 49 of the 101 Buddhist years from 2500 to 2600.** Nothing throws on the
+bare form, and `addDays('2567-02-28', 1)` answering `2567-03-01` looks reasonable, so a date lands
+one day early for the rest of that year. Every other month is identical, because February is the
+only month whose length varies.
+
+**A `Date` cannot help you here, because a `Date` has no calendar.** It is one number of
+milliseconds. `getUTCFullYear()` is always Gregorian, so a Thai user's `Date` already holds `2026`.
+The `2569` exists only at display time, when `Intl` formats it:
+
+```js
+new Intl.DateTimeFormat('th-TH-u-ca-buddhist', {dateStyle: 'short'}).format(d)   // '8/8/69'
+```
+
+So the recipe is:
+
+1. From a `Date` or a timestamp, call `day(…)`. You get a plain ISO day.
+2. To work in Buddhist years, annotate that day: `'2026-08-08[u-ca=buddhist]'`. Now `getYear` is
+   `2569`, `isLeapYear` is right, and every export carries the annotation through.
+3. **From a Buddhist year *number*, use Temporal's fields form.** This is the one place the
+   fields/string asymmetry helps rather than traps:
+
+```js
+Temporal.PlainDate.from({year: 2569, month: 8, day: 8, calendar: 'buddhist'}).toString()
+// '2026-08-08[u-ca=buddhist]'      <- and daymath accepts the object directly too
+```
+
+4. For display, use `Intl`. daymath does no localised formatting.
+
+One more trap in the same family: `'2569-08-08[u-ca=buddhist]'` is a valid string, and its
+`getYear` is **3112**. The date part is ISO 2569, and the annotation adds 543 on top.
 
 Supporting these calendars needs `temporal-polyfill/full`, because the base build cannot construct
 them where the runtime has no native Temporal. That costs **4.2 kB gzip**, and it is what makes
