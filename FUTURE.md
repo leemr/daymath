@@ -1,8 +1,48 @@
 # daymath — future work
 
-Checked-in backlog. Not a promise of order. Session handoff: local `todo.grok` (gitignored).
+Checked-in backlog. Session handoff: local `todo.grok` (gitignored).
 
-**Live now:** `daymath@0.3.0` on npmjs · `@leemr/daymath@0.3.0` on GitHub Packages · https://leemr.github.io/daymath/
+**Live now:** `daymath@0.4.0` on npmjs · `@leemr/daymath@0.4.0` on GitHub Packages · https://leemr.github.io/daymath/
+
+---
+
+## Order
+
+This section is the recommended order, not a promise. Everything below it is grouped by subject
+instead, so read this first and the sections for detail. A row that names a product call cannot
+start until that call is answered.
+
+| # | Name | What it does | Blocked by | Version |
+|---|---|---|---|---|
+| — | **Bundle rig** | the size gate and the Intl harness | — | no release |
+| 1 | **Runtime calendar split** | extend `npm run test:runtimes` for the native-vs-shim disagreement | — | no release |
+| 2 | **Calendars** | accept `[u-ca=buddhist]` and `[u-ca=roc]`; widen `assertIsoCalendar` | Mixed pair · Japanese era | 0.5.0 |
+| 3 | **fns port** | rewrite the internal `Temporal.` call sites onto `fns` | Orphan days · 1 · 2 | 0.6.0 |
+| 4 | **Size badge** | `docs/size.json` and a shields endpoint, so history lives in git | Bundle rig | no release |
+| 5 | **Business days** | business-day helpers and the ISO week suite | — | 0.7.0 |
+| 6 | **npm provenance** | publish from Actions with OIDC instead of a laptop token | — | mechanics |
+| 7 | **JSDoc examples** | deeper `@example` on the hot exports | — | patch |
+| 8 | **Awesome-list** | submit to an existing awesome list | a stable API | external |
+
+**Runtime calendar split goes first** because it is the net that catches the calendar behaviour
+differing by runtime, and it needs no product call. It does not depend on Calendars; the split
+exists today, while daymath still refuses every non-ISO calendar.
+
+### Product calls that block a row
+
+| Name | The question | What the answer costs |
+|---|---|---|
+| **Orphan days** | 5 historical days answer differently if `day()` reads the date part of the string | buys 1.9 kB gzip; changes 0.4.0 behaviour |
+| **Mixed pair** | `differenceInDays` throws `Mismatched calendars` across two calendars | refuse the pair, or normalise one side |
+| **Japanese era** | `.year` reads 2026 but `.eraYear` reads 8 for Reiwa 8 | a year-offset rule cannot describe it |
+| **setDate rolling** | daymath constrains, date-fns rolls | blocks nothing; see API / product below |
+
+### Not a pull request
+
+| Name | Kind | Action |
+|---|---|---|
+| **`size` required check** | repo setting | add `size` to the branch-protection contexts |
+| **Trust settings sweep** | repo settings | see Trust / publish below |
 
 ---
 
@@ -153,9 +193,26 @@ made inside one run is evidence.
      ISO 1483. Taking annotated strings inherits that rule and stays consistent with Temporal.
      daymath cannot fix it.
 
+- **`setDate` / `setYear` overflow — the last undecided public behaviour.** daymath constrains
+  inside the month; date-fns rolls over. `setDate('2026-02-01', 31)` answers `2026-02-28` here and
+  `2026-03-03` there. The differential harness asserts the size of the gap as a baseline:
+  **39,730** divergences for `setDate` and **196** for `setYear` over 1900-2100.
+
+  It is a product call, not a defect, and daymath's answer is already the more considered one.
+  **date-fns does not roll deliberately — it forgot to guard.** `setDate` is a bare
+  `_date.setDate(n)` pass-through to `Date`, while date-fns's own `setMonth` clamps with
+  `Math.min(day, daysInMonth)`. So "match date-fns" would mean copying an omission, and daymath's
+  one overflow rule — clamp everywhere, construction and measurement alike — would gain an
+  exception.
+
+  Switching costs one line each, both measured with 0 mismatches against rolled date-fns:
+  `setDate` becomes `d.with({day: 1}).add({days: n - 1})` (118,703 comparisons) and `setYear`
+  becomes `d.with({year: y, day: 1}).add({days: d.day - 1})` (63,917 comparisons). The full
+  argument is in `scripts/differential.mjs` under `setDate` and `setYear`.
 - Business days, ISO week suite  
 - Rich display / i18n — **out of scope** (Temporal+Intl or date-fns TZ formatters)  
-- Next **semver: 0.4.0.** `day()` is new API surface, and the Node floor moved to 20.19  
+- ~~Next **semver: 0.4.0**~~ — **shipped 2026-08-08.** `day()` was new API surface, and the Node
+  floor moved to 20.19. See the Order section for what each remaining row costs in semver.  
 
 **Done:** 0.2 calendar surface; expanded ISO years; `isValid(Date)` throws; `isSameDay` = `isEqual`; date-fns index traps (0-based month, Sunday week, etc.)
 
