@@ -15,7 +15,9 @@
 //   node scripts/cross-runtime.mjs --verbose  # show differing calls
 //   node scripts/cross-runtime.mjs --write    # re-record the baseline
 //
-//   deno run -R scripts/cross-runtime.mjs
+//   deno run -R --node-modules-dir=manual scripts/cross-runtime.mjs
+//     =manual reuses the tree npm installed. Plain --node-modules-dir replaces it with symlinks
+//     into node_modules/.deno and breaks a local checkout until you re-run `npm ci`.
 //   bun scripts/cross-runtime.mjs
 
 import { readFileSync, writeFileSync } from 'node:fs'

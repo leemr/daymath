@@ -2,7 +2,7 @@ node_modules/
 *.tgz
 .npmrc
 todo
-todo.grok
+todo.*
 *.swp
 coverage/
 deno.lock
