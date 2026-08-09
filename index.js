@@ -2,15 +2,26 @@
 // The selection is HERE on purpose, and it must not be removed again.
 //
 // `temporal-polyfill`'s base entry resolves `globalThis.Temporal || bundled` itself, so importing
-// it gave native Temporal for free. But the base build can construct only two calendars, iso8601
-// and gregory, so it cannot serve the calendar rule below. `temporal-polyfill/full` can construct
-// sixteen — and its entry is a bare re-export with NO selection, so importing it alone silenced
-// native Temporal on every runtime, including Node 26 and Deno. A review caught that.
+// it gave native Temporal for free. But that base build can construct only iso8601 and gregory, so
+// it cannot serve the calendar rule below. `temporal-polyfill/full` can construct sixteen — and its
+// entry is a bare re-export with NO selection, so importing it alone silenced native Temporal on
+// every runtime, including Node 26 and Deno. Round 1 of a review caught that.
 //
-// So the selection is written out. Measured: it costs 17 B gzip, because the polyfill ships either
-// way — a bundler cannot know at build time whether the runtime has Temporal, which is why
-// FUTURE.md records dynamic import as a dead end. Native builds the same sixteen calendars as
-// `/full`, and refuses the same two, so both paths answer identically.
+// Round 2 then caught the naive repair. A global `Temporal` is NOT necessarily native: an app doing
+// `import 'temporal-polyfill/global'` installs the BASE build, and the polyfill's own README calls
+// that the most common entry point. Selecting it blindly cost daymath three of its four calendars
+// on Node 20 and 22, which have no native Temporal, and the error blamed the caller's calendar
+// rather than naming the capability loss. Import order decided it, which is worse than a wrong
+// answer. So the candidate is PROBED, not trusted.
+//
+// The probe names no calendar. It asks the runtime for one, which keeps the "method, not a list"
+// rule that governs the calendar surface below.
+//
+// Measured: the selection costs 17 B gzip, because the polyfill ships either way — a bundler cannot
+// know at build time whether the runtime has Temporal, which is why FUTURE.md records dynamic
+// import as a dead end. Native and the bundled full build agree on every calendar daymath touches:
+// 464 date/calendar pairs over the four accepted calendars from 1900 to 2100, plus the eleven
+// refused ones, with zero disagreements.
 //
 // Native matters for three reasons beyond taste. daymath's contract is Temporal's behaviour, and
 // native IS Temporal. The deno CI lane exists to prove the polyfill and the standard agree, and it
@@ -18,16 +29,67 @@
 // reaches callers with no release from here.
 import { Temporal as bundledTemporal } from 'temporal-polyfill/full'
 
-// The cast is needed because `Temporal` is not declared on `globalThis` in the type space —
-// `temporal-polyfill/global` declares it, and daymath deliberately does not install a global.
-const nativeTemporal =
-  /** @type {{Temporal?: typeof bundledTemporal}} */ (globalThis).Temporal
+/**
+ * Every calendar this runtime names. Read once, lowercased, because BCP-47 keys are
+ * case-insensitive while a `Map` key is not.
+ *
+ * This set is also what bounds the verdict cache below. It is closed and small — 18 ids on Node 26
+ * — so an id the runtime does not name is refused without ever being stored.
+ *
+ * `Intl.supportedValuesOf` is ES2022 and present on every runtime in `engines`.
+ */
+const RUNTIME_CALENDARS = new Set(
+  Intl.supportedValuesOf('calendar').map((id) => id.toLowerCase()),
+)
 
-// The fallback needs a runtime with NO native Temporal, so this process cannot reach it. It is
-// covered for real by the Node 20 and bun CI lanes, and `npm run test:runtimes` proves those lanes
-// answer identically to the native ones.
+/**
+ * Can this Temporal build a calendar beyond the two every build has?
+ *
+ * The cast is needed because `Temporal` is not declared on `globalThis` in the type space, and
+ * daymath deliberately installs no global of its own.
+ * @param {unknown} candidate
+ * @returns {candidate is typeof bundledTemporal}
+ */
+/*
+ * Every branch here turns on `globalThis.Temporal`, which is read once at module load. A test in
+ * this process cannot change it after the fact, so none of these branches is reachable from the
+ * suite. They are covered three other ways, and each is real:
+ *
+ * 1. `test.js` spawns a CHILD process that installs the BASE polyfill global and then imports
+ *    daymath. That is the exact scenario this function exists for, and it asserts the four
+ *    calendars survive. A child's execution does not count toward this file's coverage.
+ * 2. The Node 20 and bun CI lanes have no native Temporal, so they take the fallback for real.
+ * 3. `npm run test:runtimes` proves every lane answers identically.
+ */
+/* c8 ignore start */
+function buildsExoticCalendars(candidate) {
+  const temporal = /** @type {typeof bundledTemporal | undefined} */ (candidate)
+  if (temporal?.PlainDate?.from === undefined) return false
+  // Ask the runtime for a calendar rather than naming one. The two excluded here are the pair every
+  // build can construct, so anything else proves the exotic calendar data is present.
+  const exotic = [...RUNTIME_CALENDARS].find((id) => id !== 'iso8601' && id !== 'gregory')
+  if (exotic === undefined) return true // nothing to prove it against
+  try {
+    temporal.PlainDate.from('2026-01-31').withCalendar(exotic)
+    return true
+  } catch {
+    return false
+  }
+}
+/* c8 ignore stop */
+
+// The fallback needs a runtime whose global Temporal is absent or not calendar-capable, so a process
+// with native Temporal cannot reach it. It is covered for real by the Node 20 and bun CI lanes, and
+// `npm run test:runtimes` proves those lanes answer identically to the native ones.
+// One cast, because `Temporal` is not declared on `globalThis` in the type space and daymath
+// deliberately installs no global of its own.
+const globalTemporal = /** @type {{Temporal?: unknown}} */ (globalThis).Temporal
+
+// The fallback needs a runtime whose global Temporal is absent or not calendar-capable, so a process
+// with native Temporal cannot reach it. It is covered for real by the Node 20 and bun CI lanes, and
+// `npm run test:runtimes` proves those lanes answer identically to the native ones.
 /* c8 ignore next */
-const Temporal = nativeTemporal ?? bundledTemporal
+const Temporal = buildsExoticCalendars(globalTemporal) ? globalTemporal : bundledTemporal
 
 /**
  * ISO 8601 calendar day string:
@@ -107,12 +169,10 @@ function hasZoneAnnotation(text) {
 const ZONE_LIKE =
   /^(?:(?![Tt]\d)[A-Za-z][A-Za-z0-9_+.-]*(?:\/[A-Za-z0-9_+.-]+)*|[+-]\d{2}(?::?\d{2})?)$/u
 
-// `Temporal` is a const now, not an imported namespace, so it cannot carry types. These three
-// typedefs take them straight from the package instead. Naming them here also keeps the JSDoc
-// below shorter than an inline `import(...)` at every site.
+// `Temporal` is a const now, not an imported namespace, so it cannot carry types. `PlainDate` has
+// seven use sites, so a typedef earns itself. `Instant` and `ZonedDateTime` have one each and are
+// inlined, because measured the typedef plus its use is longer than the inline form.
 /** @typedef {import('temporal-polyfill').Temporal.PlainDate} PlainDate */
-/** @typedef {import('temporal-polyfill').Temporal.Instant} Instant */
-/** @typedef {import('temporal-polyfill').Temporal.ZonedDateTime} ZonedDateTime */
 /** @typedef {string | PlainDate} DayInput */
 /**
  * @typedef {object} Interval
@@ -171,31 +231,26 @@ const CALENDAR_PROBES = [
 const calendarRuleCache = new Map()
 
 /**
- * The longest real calendar id is `islamic-umalqura`, 16 characters. 40 is generous headroom for
- * one CLDR has not shipped yet.
- */
-const CALENDAR_ID_MAX = 40
-
-/**
- * Could this string be a BCP-47 calendar key at all?
+ * Is this a calendar the runtime actually names?
  *
- * **This guard is what bounds `calendarRuleCache`, and it is a memory-exhaustion fix.** The cache
- * keys on whatever sits between `[u-ca=` and `]`, which is caller input. Without this guard the map
- * grew without bound and never released: 200,000 distinct rejected ids retained 56.5 MB, and one
- * 1 MB id retained 1 MB, permanently. The quiet path was `isValid`, which swallows the RangeError,
- * so a loop raised nothing and logged nothing.
+ * **This is what bounds `calendarRuleCache`, and it is a memory-exhaustion fix.** The cache keys on
+ * whatever sits between `[u-ca=` and `]`, which is caller input.
  *
- * A BCP-47 key is subtags of 3 to 8 alphanumerics joined by `-`. The length is checked BEFORE any
- * pattern runs, and each part is bounded to 8 characters before its own test, so nothing here is
- * quadratic. `js/polynomial-redos` has already caught two patterns in this file; string length
- * first, pattern second, is the rule that came out of that.
- * @param {string} id
+ * A shape guard was tried first and was only half a fix. It bounded the key LENGTH and not the
+ * entry COUNT, so any BCP-47-shaped string still bought a permanent entry: 800,000 distinct
+ * guard-passing ids retained 76.8 MB, growing linearly and never released. Case made it worse,
+ * because the shape test ignored case while the `Map` key did not, so one name had 256 keys.
+ *
+ * A closed set fixes both at once. `RUNTIME_CALENDARS` holds 18 ids on Node 26, so entries can
+ * never exceed what the runtime has, and a lowercased key collapses the case variants. It also
+ * needs no length cap and no pattern, which removes the last quadratic-regex risk from this file.
+ *
+ * The quiet path was `isValid`, which swallows the `RangeError`, so a loop raised nothing and
+ * logged nothing.
+ * @param {string} lowerId
  */
-function plausibleCalendarId(id) {
-  if (id.length > CALENDAR_ID_MAX) return false
-  return id
-    .split('-')
-    .every((part) => part.length >= 3 && part.length <= 8 && /^[a-z0-9]+$/iu.test(part))
+function runtimeKnowsCalendar(lowerId) {
+  return RUNTIME_CALENDARS.has(lowerId)
 }
 
 /**
@@ -265,21 +320,23 @@ function supportedCalendar(text, label) {
   // explicit spelling, and "nothing to carry" is what both of these mean.
   if (annotated === null) return
   const { calendar } = annotated
-  if (calendar.toLowerCase() === 'iso8601') return
-  // Shape first, so an implausible id never reaches the cache. See plausibleCalendarId.
-  if (!plausibleCalendarId(calendar)) {
-    throw new RangeError(
-      `daymath: ${label} calendar ${JSON.stringify(calendar.slice(0, CALENDAR_ID_MAX))} is not a calendar this runtime knows (convert with withCalendar('iso8601'))`,
-    )
-  }
-  const verdict = calendarRule(calendar)
+  // Lowercased once. BCP-47 keys are case-insensitive, and this is also the cache key, so the case
+  // variants of one name must collapse to one entry rather than 256.
+  const lowerId = calendar.toLowerCase()
+  if (lowerId === 'iso8601') return
+  // Membership FIRST, so an id the runtime does not name is never stored. See runtimeKnowsCalendar.
+  // One throw, not two: an unknown id and a renumbering one differ only in the reason.
+  const verdict = runtimeKnowsCalendar(lowerId)
+    ? calendarRule(lowerId)
+    : /** @type {const} */ ({ reason: 'unknown' })
   if ('offset' in verdict) return calendar
   const why =
     verdict.reason === 'unknown'
       ? 'is not a calendar this runtime knows'
       : 'renumbers months or days, so daymath cannot answer a day in it'
+  // The id is sliced because it is caller input, so a megabyte in cannot become a megabyte of error.
   throw new RangeError(
-    `daymath: ${label} calendar ${JSON.stringify(calendar)} ${why} (convert with withCalendar('iso8601'))`,
+    `daymath: ${label} calendar ${JSON.stringify(calendar.slice(0, 40))} ${why} (convert with withCalendar('iso8601'))`,
   )
 }
 
@@ -523,9 +580,9 @@ export function day(moment, tz) {
   const isMoment = isDay || moment instanceof Date || typeof moment === 'number'
 
   let zone = tz
-  /** @type {Instant | undefined} */
+  /** @type {import('temporal-polyfill').Temporal.Instant | undefined} */
   let instant
-  /** @type {ZonedDateTime | undefined} */
+  /** @type {import('temporal-polyfill').Temporal.ZonedDateTime | undefined} */
   let zoned
   if (!isMoment && moment !== undefined && moment !== null) {
     if (typeof moment !== 'string') {

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { spawnSync } from 'node:child_process'
 import { describe, it } from 'node:test'
 import { Temporal } from 'temporal-polyfill'
 // A second, genuinely distinct Temporal implementation. Used to prove daymath
@@ -590,9 +591,7 @@ describe('a PlainDate from another Temporal implementation', () => {
     assert.equal(dm.isSameWeek(buddhist, far), false)
     assert.equal(dm.isEqual(buddhist, far), false)
     // The field reads still honour the label, which is the other half of the rule.
-    assert.equal(dm.getYear(buddhist), 2569)
-    assert.equal(dm.getQuarter(buddhist), 1)
-    assert.equal(dm.setYear(buddhist, 2570), '2027-01-31[u-ca=buddhist]')
+    assert.equal(dm.getQuarter(buddhist), 1) // getYear and setYear are asserted above
     // And on the README's own near pair, a 29-day gap is one month, not 6,513.
     assert.equal(dm.differenceInMonths('2026-03-01', '2026-01-31[u-ca=buddhist]'), 1)
     assert.equal(dm.differenceInYears('2026-03-01', '2026-01-31[u-ca=buddhist]'), 0)
@@ -611,8 +610,63 @@ describe('a PlainDate from another Temporal implementation', () => {
         200,
     )
     // Real ids on both sides of the length rule still work.
-    assert.equal(dm.getYear('2026-01-31[u-ca=roc]'), 115) // 3 characters, the shortest
     assert.throws(() => parse('2026-01-31[u-ca=islamic-umalqura]'), /renumbers/) // 16, the longest
+
+    // THE REGRESSION TEST for the defect a review round found in the fix before it. A global
+    // `Temporal` is not necessarily native: an app doing `import 'temporal-polyfill/global'`
+    // installs the BASE build, which can construct only iso8601 and gregory. Selecting it blindly
+    // cost daymath three of its four calendars, and the error blamed the caller's calendar rather
+    // than naming the capability loss. Import order decided it, which is worse than a wrong answer.
+    //
+    // A CHILD process, because the selection reads the global once at module load and this process
+    // already has native Temporal.
+    {
+      const probe = `
+        delete globalThis.Temporal
+        await import('temporal-polyfill/global')
+        const base = globalThis.Temporal.PlainDate.from('2026-01-31')
+        let baseBuildsBuddhist = true
+        try { base.withCalendar('buddhist') } catch { baseBuildsBuddhist = false }
+        const dm = await import(${JSON.stringify(new URL('./index.js', import.meta.url).href)})
+        console.log(JSON.stringify({
+          baseBuildsBuddhist,
+          buddhist: dm.getYear('2026-01-31[u-ca=buddhist]'),
+          roc: dm.getYear('2026-01-31[u-ca=roc]'),
+          japanese: dm.getYear('2026-01-31[u-ca=japanese]'),
+          iso: dm.getYear('2026-01-31'),
+        }))
+      `
+      const { stdout } = spawnSync(
+        process.execPath,
+        ['--input-type=module', '-e', probe],
+        {
+          encoding: 'utf8',
+        },
+      )
+      const got = JSON.parse(stdout)
+      assert.equal(got.baseBuildsBuddhist, false) // control: the global really is the base build
+      assert.equal(got.buddhist, 2569) // and daymath keeps all four calendars anyway
+      assert.equal(got.roc, 115)
+      assert.equal(got.japanese, 2026)
+      assert.equal(got.iso, 2026)
+    }
+
+    // `islamic` and `islamic-rgsa` are the only ids the runtime NAMES but Temporal refuses to
+    // BUILD, so they are the only inputs that now reach calendarRule's catch. Membership is checked
+    // first, so anything the runtime does not name never gets that far.
+    for (const id of ['islamic', 'islamic-rgsa']) {
+      assert.ok(Intl.supportedValuesOf('calendar').includes(id)) // control: the runtime names it
+      assert.throws(
+        () => parse(`2026-01-31[u-ca=${id}]`),
+        /is not a calendar this runtime knows/,
+      )
+    }
+
+    // BCP-47 calendar keys are case-insensitive, and the cache keys on the lowercased id, so one
+    // name cannot become 256 entries.
+    for (const spelling of ['buddhist', 'BUDDHIST', 'Buddhist', 'bUdDhIsT']) {
+      assert.equal(dm.getYear(`2026-01-31[u-ca=${spelling}]`), 2569)
+    }
 
     // THE TRAP, pinned as a test because it is the one way to get a wrong answer with no error.
     // Buddhist 2567 is ISO 2024, a leap year. But 2567 read as an ISO year is not, because the
