@@ -109,17 +109,23 @@ rig, not from here — absolute byte counts do not transfer between experiments,
 made inside one run is evidence.
 
 - ~~Dynamic import / optional peer for native Temporal~~ — **measured, dead end.** The polyfill still ships in a lazy chunk, and it forces the whole API async.
-- **`temporal-polyfill/fns/PlainDate` is the live option, and it is worth −13.1 kB gzip** on a
-  three-call program: 20.0 kB → 6.9 kB, a 66% cut. Measured 2026-08-09, esbuild 0.28.1.
-- **The win needs the caller to tree-shake.** At whole surface, fns is 0.8 kB *worse*, because
-  `fns/PlainDate.js` statically imports both `funcApi-native.js` and `funcApi-shim.js` and picks
-  with `NativeTemporal ? … : …`. Nothing shakes when a caller reaches everything.
+- **`temporal-polyfill/fns/PlainDate` is the live option.** Run `npm run size` for the number; do
+  not quote one from here. The two mechanisms are what is durable, and both still hold.
+- **The win needs the caller to tree-shake**, because `fns/PlainDate.js` statically imports both
+  `funcApi-native.js` and `funcApi-shim.js` and picks with `NativeTemporal ? … : …`. Nothing shakes
+  when a caller reaches everything.
+- **Beware comparing a class-API shape against an fns shape now.** Shapes A, B and F reach
+  `index.js`, which carries the full polyfill for the calendars; the fns shapes import the `fns`
+  tree directly and carry no calendar support. So an A-versus-D delta is not like-for-like. The
+  honest post-calendars row is A against **I**, `fns, ISO + buddhist + roc`. Fixture C has the same
+  problem: it imports the BASE polyfill, so the printed A−C delta mixes the calendar data into
+  daymath's own cost. Measured properly, daymath's own code is about 1.0 kB, not 4.8 kB.
 - **Returning a real `PlainDate` costs the whole saving and more** (+14.5 kB), because
   `fns.toTemporal` needs a free `Temporal` global and throws without one, so the class API comes
   back in. Returning strings is what keeps this option open.
 - **`day()` no longer needs Temporal at all.** `Intl` already carries a TZ database in every
   runtime, and it answers the only hard direction: instant + zone → civil day. Verified against
-  Temporal over 40,120 zone/moment pairs, **0 mismatches**, including BC eras, expanded years,
+  Temporal over 40,230 zone/moment pairs, **0 mismatches**, including BC eras, expanded years,
   DST gaps and negative DST. `npm run test:intl-day` is that harness.
 
   | day() built on | gzip in a fns port |
@@ -190,8 +196,9 @@ made inside one run is evidence.
   both operands. The object / string asymmetry belongs to Temporal and daymath inherits it, because
   daymath never takes the fields form.
 
-  **`day()` now carries the annotation**, so its result is not always bare `YYYY-MM-DD`. That
-  promise was already loose: `day('+010000-01-01')` returns an expanded year.
+  **`day()` is the normaliser and DROPS the annotation**, so it always returns a plain ISO day.
+  Every other export carries it. The `@returns` promise of `YYYY-MM-DD` was already loose anyway,
+  because `day('+010000-01-01')` returns an expanded year.
 
 - **`setDate` / `setYear` overflow — the last undecided public behaviour.** daymath constrains
   inside the month; date-fns rolls over. `setDate('2026-02-01', 31)` answers `2026-02-28` here and

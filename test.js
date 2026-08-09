@@ -304,7 +304,6 @@ describe('day() — the one export that reads a clock', () => {
     // Without a zone bracket the calendar is inert, so there is nothing to renumber and nothing
     // to drop. An Instant has no year, month or day at all.
     assert.equal(dm.day('2026-08-08T20:00:00-04:00[u-ca=buddhist]'), '2026-08-09')
-    assert.equal(dm.day('2026-08-08T20:00:00-04:00[u-ca=buddhist]'), '2026-08-09')
     // And it accepts the one annotation daymath accepts anywhere else.
     assert.equal(dm.day('2026-08-08T12:00[America/New_York][u-ca=iso8601]'), '2026-08-08')
     // The zone slot is checked by shape too, and for the same reason: hour 25
@@ -559,9 +558,9 @@ describe('a PlainDate from another Temporal implementation', () => {
     const hebrew = OTHER.from('2026-01-31[u-ca=hebrew]')
     assert.equal(hebrew.month, 5) // control: Hebrew names this month 5
     assert.throws(() => format(hebrew), /renumbers months or days/)
-    assert.throws(() => dm.getMonth(hebrew), /renumbers months or days/) // would have said 1
 
-    // The error names the calendar and the way out, not a malformed string.
+    // The error names the calendar and the way out, not a malformed string. This also covers
+    // getMonth(hebrew), which would have answered 1.
     assert.throws(() => dm.getMonth(hebrew), {
       name: 'RangeError',
       message:
@@ -572,6 +571,49 @@ describe('a PlainDate from another Temporal implementation', () => {
     for (const y of ['2024', '2025', '2026', '2027']) {
       assert.throws(() => dm.getMonth(`${y}-01-31[u-ca=hebrew]`), /renumbers/)
     }
+    // THE RULE, swept over the whole class. Every export that takes TWO dates measures in ONE
+    // coordinate system and ignores the year label. Only a single-date field read or write honours
+    // it. Three of these answered a silently wrong number before the review, and three more
+    // answered true for two days 543 ISO years apart.
+    const far = '2569-01-31' // ISO 2569, which is 198,327 days after the Buddhist day above
+    assert.equal(dm.differenceInDays(buddhist, far), -198_327)
+    assert.equal(dm.differenceInWeeks(buddhist, far), -28_332)
+    assert.equal(dm.differenceInMonths(buddhist, far), -6516)
+    assert.equal(dm.differenceInQuarters(buddhist, far), -2172)
+    assert.equal(dm.differenceInYears(buddhist, far), -543)
+    assert.equal(dm.differenceInCalendarMonths(buddhist, far), -6516)
+    assert.equal(dm.differenceInCalendarQuarters(buddhist, far), -2172)
+    assert.equal(dm.differenceInCalendarYears(buddhist, far), -543)
+    assert.equal(dm.isSameYear(buddhist, far), false)
+    assert.equal(dm.isSameMonth(buddhist, far), false)
+    assert.equal(dm.isSameQuarter(buddhist, far), false)
+    assert.equal(dm.isSameWeek(buddhist, far), false)
+    assert.equal(dm.isEqual(buddhist, far), false)
+    // The field reads still honour the label, which is the other half of the rule.
+    assert.equal(dm.getYear(buddhist), 2569)
+    assert.equal(dm.getQuarter(buddhist), 1)
+    assert.equal(dm.setYear(buddhist, 2570), '2027-01-31[u-ca=buddhist]')
+    // And on the README's own near pair, a 29-day gap is one month, not 6,513.
+    assert.equal(dm.differenceInMonths('2026-03-01', '2026-01-31[u-ca=buddhist]'), 1)
+    assert.equal(dm.differenceInYears('2026-03-01', '2026-01-31[u-ca=buddhist]'), 0)
+
+    // An implausible calendar id is refused BEFORE it can reach the verdict cache. Without this
+    // the cache grew without bound from caller input and never released: 200,000 distinct rejected
+    // ids retained 56.5 MB, and isValid swallowed every error, so nothing was raised or logged.
+    assert.equal(dm.isValid(`2026-01-31[u-ca=${'y'.repeat(100_000)}]`), false)
+    assert.throws(() => parse(`2026-01-31[u-ca=${'y'.repeat(100_000)}]`), {
+      name: 'RangeError',
+      // The message quotes a truncated id, so a megabyte of input cannot become a megabyte of error.
+      message: /is not a calendar this runtime knows/,
+    })
+    assert.ok(
+      capture(() => parse(`2026-01-31[u-ca=${'y'.repeat(100_000)}]`)).message.length <
+        200,
+    )
+    // Real ids on both sides of the length rule still work.
+    assert.equal(dm.getYear('2026-01-31[u-ca=roc]'), 115) // 3 characters, the shortest
+    assert.throws(() => parse('2026-01-31[u-ca=islamic-umalqura]'), /renumbers/) // 16, the longest
+
     // THE TRAP, pinned as a test because it is the one way to get a wrong answer with no error.
     // Buddhist 2567 is ISO 2024, a leap year. But 2567 read as an ISO year is not, because the
     // offset is 543 and 543 mod 4 is 3, so the leap years land in different places. Passing the
