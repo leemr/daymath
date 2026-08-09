@@ -1,0 +1,4 @@
+# Every path, so an outside PR requests a review from the owner automatically.
+# This only REQUESTS a review. It gates nothing unless branch protection also turns on
+# "require review from Code Owners".
+*       @leemr
