@@ -15,26 +15,25 @@ start until that call is answered.
 | # | Name | What it does | Blocked by | Version |
 |---|---|---|---|---|
 | — | **Bundle rig** | the size gate and the Intl harness | — | no release |
-| 1 | **Calendars** | accept `[u-ca=buddhist]` and `[u-ca=roc]`; widen `assertIsoCalendar` | Mixed pair · Japanese era | 0.5.0 |
-| 2 | **fns port** | rewrite the internal `Temporal.` call sites onto `fns` | Orphan days · 1 | 0.6.0 |
-| 3 | **Size badge** | `docs/size.json` and a shields endpoint, so history lives in git | Bundle rig | no release |
-| 4 | **Business days** | business-day helpers and the ISO week suite | — | 0.7.0 |
-| 5 | **npm provenance** | publish from Actions with OIDC instead of a laptop token | — | mechanics |
-| 6 | **JSDoc examples** | deeper `@example` on the hot exports | — | patch |
-| 7 | **Awesome-list** | submit to an existing awesome list | a stable API | external |
+| — | **Calendars** | accepts a calendar that only relabels the year | **done**, awaiting 0.5.0 | 0.5.0 |
+| 1 | **fns port** | rewrite the internal `Temporal.` call sites onto `fns` | Orphan days | 0.6.0 |
+| 2 | **Size badge** | `docs/size.json` and a shields endpoint, so history lives in git | Bundle rig | no release |
+| 3 | **Business days** | business-day helpers and the ISO week suite | — | 0.7.0 |
+| 4 | **npm provenance** | publish from Actions with OIDC instead of a laptop token | — | mechanics |
+| 5 | **JSDoc examples** | deeper `@example` on the hot exports | — | patch |
+| 6 | **Awesome-list** | submit to an existing awesome list | a stable API | external |
 
 **There is no "extend `test:runtimes` for the calendar split" row, and there must not be one.**
 That row was drafted and then measured away, so the reason is recorded here rather than repeated.
 
-The native-vs-shim calendar disagreement is real, but it lives inside `temporal-polyfill/fns`,
-which daymath does not use yet. The class API has no such split: `assertIsoCalendar` reads the
-annotation out of the string before Temporal is asked to build a calendar, so the polyfill's
-`Unknown calendar hebrew` never surfaces. Both paths answer with the same daymath `RangeError`,
-character for character, verified by deleting `globalThis.Temporal`.
+The native-vs-shim disagreement inside `temporal-polyfill/fns` is real, and daymath does not use
+that layer yet. The class API has no such split either, now for a stronger reason than before:
+`temporal-polyfill/full` builds every calendar on both paths, and the cross-runtime baseline
+passes byte-identically on Node 26, deno (both native Temporal) and bun (the polyfill).
 
-**The net that will catch the port's hazard already exists.** `scripts/battery.mjs` carries
-`'2026-01-31[u-ca=buddhist]'` and `'2026-01-31[!u-ca=buddhist]'` in `JUNK`, and CI runs both
-Temporal paths:
+**The net that will catch the port's hazard already exists.** `scripts/battery.mjs` carries an
+explicit `CALENDARS` list — accepted annotations, including the critical `!` spelling and a mixed
+pair — plus refused ones in `JUNK`, and CI runs both Temporal paths:
 
 | lane | Temporal |
 |---|---|
@@ -43,17 +42,18 @@ Temporal paths:
 | deno | native |
 | bun | `temporal-polyfill` |
 
-A port that reached the fns layer with `getISO` would answer `2026` on the shim lanes where the
-native lanes throw. The hash for `getYear` would move, and Node 20 and bun would go red. So the
-port needs no new harness — it needs the existing one to stay green.
+A port that reached the fns layer with `getISO` would silently drop the annotation on the shim
+lanes and answer `2026` where the native lanes answer `2569`. The hash for `getYear` would move,
+and Node 20 and bun would go red. So the port needs no new harness — it needs this one to stay
+green.
 
 ### Product calls that block a row
 
 | Name | The question | What the answer costs |
 |---|---|---|
 | **Orphan days** | 5 historical days answer differently if `day()` reads the date part of the string | buys 1.9 kB gzip; changes 0.4.0 behaviour |
-| **Mixed pair** | `differenceInDays` throws `Mismatched calendars` across two calendars | refuse the pair, or normalise one side |
-| **Japanese era** | `.year` reads 2026 but `.eraYear` reads 8 for Reiwa 8 | a year-offset rule cannot describe it |
+| ~~**Mixed pair**~~ | ~~`differenceInDays` throws `Mismatched calendars`~~ | **answered:** measurement normalises, so it returns 29 |
+| ~~**Japanese era**~~ | ~~`.eraYear` reads 8 for Reiwa 8~~ | **answered:** Temporal's `.year` is ISO-aligned, so the offset is 0 and daymath reads no era |
 | **setDate rolling** | daymath constrains, date-fns rolls | blocks nothing; see API / product below |
 
 ### Not a pull request
@@ -149,68 +149,49 @@ made inside one run is evidence.
 
 ## API / product (optional)
 
-- **Accept `buddhist` and `roc` calendars** — next PR. daymath refuses every non-ISO calendar
-  today. That is correct as a default, because normalising to ISO would answer `2026` where the
-  caller's own object says `2569`. But the refusal is wider than it needs to be.
+- ~~**Accept `buddhist` and `roc` calendars**~~ — **DONE, awaiting the 0.5.0 release.** It landed
+  wider than planned: `japanese` and `gregory` pass the same rule, so four calendars are accepted,
+  not two.
 
-  The line is measurable at runtime, not a list to maintain: **accept a calendar when its month
-  and day already equal the ISO fields.** Compare `d.month`/`d.day` against
-  `d.withCalendar('iso8601')`. Measured on `2026-01-31` with `temporal-polyfill/full`:
+  **The rule is measured, and nothing in the code names a calendar.** `calendarRule` in `index.js`
+  requires two conditions on nine probe dates spanning 1900 to 2100: the month and day must equal
+  the ISO fields, and the year offset must be constant. A calendar CLDR adds later is admitted or
+  refused by the same measurement, with no code change.
 
-  | calendar | year | month | day | ISO month+day match |
-  |---|---|---|---|---|
-  | `buddhist` | 2569 | 1 | 31 | **yes** (+543) |
-  | `roc` | 115 | 1 | 31 | **yes** (−1911) |
-  | `japanese` | 2026 | 1 | 31 | **yes**, but era-based |
-  | `hebrew` | 5786 | 5 | 13 | no |
-  | `chinese` | 2025 | 13 | 13 | no, 13 months |
-  | `persian` | 1404 | 11 | 11 | no |
-  | `coptic` | 1742 | 5 | 23 | no, 13 months |
-  | `ethiopic` | 2018 | 5 | 23 | no, 13 months |
-  | `indian` | 1947 | 11 | 11 | no |
+  | accepted | offset | refused | why |
+  |---|---|---|---|
+  | `buddhist` | +543 | `hebrew` `indian` `persian` `islamic-*` | renumber month and day |
+  | `roc` | −1911 | `chinese` `dangi` | lunisolar, 13 months |
+  | `japanese` | 0 | `coptic` `ethiopic` `ethioaa` | 13 months |
+  | `gregory` | 0 | | |
 
-  For the matching family only the year label moves, so every export still works honestly.
-  daymath returns strings, so the annotation rides along and nothing is lost:
+  **Three things measurement settled, each different from what was written here before:**
 
-  ```js
-  getYear('2026-01-31[u-ca=buddhist]')        // 2569, not 2026
-  addDays('2026-01-31[u-ca=buddhist]', 1)     // '2026-02-01[u-ca=buddhist]'
-  setYear('2026-01-31[u-ca=buddhist]', 2570)  // '2027-01-31[u-ca=buddhist]'
-  ```
+  1. **A month *count* is the wrong test.** `hebrew` has 12 months in 2025 and 2026 and 13 in 2024
+     and 2027, because it is lunisolar. Only the field comparison is right in every year.
+  2. **The rule must read Temporal, not `Intl`.** `Intl` reports the *era* year — Reiwa 8, and
+     B.R.O.C. 12 for `roc` in 1900 — so an offset test over `Intl` rejects `japanese` and `roc`.
+     Temporal reports a continuous year for both, so both are pure labels: its `roc` year for 1900
+     is `-11`, not "12 before". Temporal is what daymath answers with, so Temporal is what the rule
+     asks.
+  3. **`japanese` needed no special case at all.** Its `.year` is ISO-aligned across every era
+     boundary, its month and day are ISO, and the only fields that differ are `.era` and
+     `.eraYear`, which daymath does not expose. It is the safest of the four.
 
-  The renumbering family cannot work this way: `addMonths` has no meaning when a year holds 13
-  months and month lengths do not line up with ISO.
+  **The cost was a dependency change, not code.** The base `temporal-polyfill` cannot build these
+  calendars where the runtime has no native Temporal; it throws
+  `Unknown calendar buddhist; might need temporal-polyfill/full`. Node 20 and bun are on that path
+  in CI. `temporal-polyfill/full` costs **+4,227 B gzip, +20.6%**, and the size gate refused to
+  pass until the baseline was re-recorded on purpose. That buys identical answers on every runtime,
+  not new capability.
 
-  **Already true, and useful groundwork.** `day()` refuses a calendar only where it is
-  *applied*. `'2026-08-08T20:00:00Z[u-ca=buddhist]'` names an `Instant`, which has no fields
-  for a calendar to renumber, so the annotation is inert and the day is answered. The
-  refusal lives in one function, `assertIsoCalendar`, called from `toPlainDate` and from the
-  zoned path in `day()`. That is the single place this PR would widen.
+  **The two open questions are answered.** A mixed pair measures rather than throwing, because a
+  day is the same day whatever its year is labelled; `differenceInDays` and `isEqual` normalise
+  both operands. The object / string asymmetry belongs to Temporal and daymath inherits it, because
+  daymath never takes the fields form.
 
-  **Priced, 2026-08-09.** In a fns port the calendar set is a *build-time* choice:
-  `fromString(s, getCalendar)` takes a resolver, and `temporal-polyfill/fns/Calendar` exports
-  `getISO`, `getBasic`, `getAny` plus one getter per calendar. ISO + buddhist + roc costs
-  **+0.5 kB gzip**; admitting every calendar costs **+4.2 kB**. So the matching-family rule is
-  nearly free, and refusing the other thirteen saves 3.7 kB.
-
-  **The resolver is not a gate on the native path.** Same call, `getISO`, the string
-  `'2026-01-31[u-ca=buddhist]'`: the shim path (no native `Temporal`, so every browser today)
-  answers `'2026-01-31'` and drops the annotation, while the native path (Node 26, Deno) answers
-  `'2026-01-31[u-ca=buddhist]'` with `.year` 2569. One program, two answers, decided by the
-  runtime. `npm run test:runtimes` is the only gate that can see it, and a fns port therefore
-  cannot delete `assertIsoCalendar`.
-
-  Three questions the PR must still answer:
-
-  1. **`japanese` is era-based.** `.year` reads 2026 but `.eraYear` reads 8 for Reiwa 8. A
-     year-offset rule does not describe it, so it may need its own decision.
-  2. **A mixed pair throws.** `differenceInDays('2026-01-31[u-ca=buddhist]', '2026-03-01')` raises
-     Temporal's `Mismatched calendars`. Both sides must name the same calendar, so daymath has to
-     decide whether it refuses a mixed pair or normalises one side.
-  3. **The object / string asymmetry belongs to Temporal.** A string's date part is always ISO;
-     an object's fields are calendar fields, so `from({year: 2026, …, calendar: 'buddhist'})` is
-     ISO 1483. Taking annotated strings inherits that rule and stays consistent with Temporal.
-     daymath cannot fix it.
+  **`day()` now carries the annotation**, so its result is not always bare `YYYY-MM-DD`. That
+  promise was already loose: `day('+010000-01-01')` returns an expanded year.
 
 - **`setDate` / `setYear` overflow — the last undecided public behaviour.** daymath constrains
   inside the month; date-fns rolls over. `setDate('2026-02-01', 31)` answers `2026-02-28` here and
