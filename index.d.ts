@@ -34,13 +34,16 @@ export type WeekOptions = {
  * string is already a day, so a zone does not apply to it. An ISO timestamp
  * carrying `Z` or an offset names an exact instant, so it is read as a moment.
  *
- * `'11/12/2026'` is refused, because nobody can tell November from December in
- * it. `'2026-08-08T12:00'` is refused too: it carries no offset, so it names no
- * instant, and daymath will not pick a zone for you.
+ * A string carrying a `[Zone]` annotation names its own zone, so it answers its
+ * own civil day and the UTC default never applies. Passing `tz` as well throws.
  *
- * A lone string takes one of three roles, in this order: a day, an instant, then
- * a zone. The zone test is by shape — an IANA name starts with a letter, or the
- * string is a bare offset — so a timestamp can never be read as a zone.
+ * `'11/12/2026'` is refused, because nobody can tell November from December in
+ * it. `'2026-08-08T12:00'` is refused too: no offset and no zone, so daymath
+ * would have to pick one. Name the zone and it is accepted.
+ *
+ * A lone string takes one of four roles, in this order: a day, a zoned time, an
+ * instant, then a zone. The zone test is by shape — an IANA name, which carries
+ * no `:`, or a bare offset — so a timestamp can never be read as a zone.
  */
 export function day(tz?: string): string
 export function day(

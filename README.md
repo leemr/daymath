@@ -61,6 +61,7 @@ Name a zone when the answer depends on one.
 day('Asia/Tokyo')                      // '2026-08-09'  today in Tokyo
 day(row.createdAt, 'America/New_York') // '2026-08-06'  the evening before
 day('2026-08-08T23:00:00Z', 'Asia/Tokyo') // '2026-08-09'  same instant, next day
+day(zdt.toString())                    // the zone in the string wins
 ```
 
 Both defaults are **stated**, not assumed.
@@ -78,16 +79,23 @@ Four rules worth knowing:
 - A **day carries no time**, so a zone does not apply to one.
   `day('2026-05-05', 'Asia/Tokyo')` is `'2026-05-05'`.
 - A **timestamp carrying `Z` or an offset** names an exact instant, so it is read
-  as a moment. One carrying neither is refused: `'2026-08-08T12:00'` names no
-  instant, and daymath will not pick a zone for you.
+  as a moment.
+- A **string carrying a `[Zone]`** names its own zone, so it keeps its own day and
+  the UTC default never applies. `day(zdt.toString())` equals `zdt.toPlainDate()`.
+  A browser sending `'2026-08-08T20:00:00-04:00[America/New_York]'` gets back the
+  8th, which is the date its user saw. Passing `tz` as well throws.
+- A string with **neither** is refused. `'2026-08-08T12:00'` names no instant and
+  no zone, so daymath would have to pick one, and it will not pick for you. Name
+  the zone — `'2026-08-08T12:00[America/New_York]'` — and it is accepted.
 - **`'11/12/2026'` is refused.** Nobody can tell November from December in it.
 
-A lone string takes one of three roles, decided in this order: a day, an instant,
-then a zone. The zone test is by **shape** — an IANA name starts with a letter, or
-the string is a bare offset such as `+05:30`. Temporal's own zone grammar cannot
-decide the role: it accepts a whole timestamp and reads the zone out of it, so
-`day('1999-01-01T00:00:00Z')` would answer today. That grammar also differs
-between implementations, which would make the answer depend on the runtime.
+A lone string takes one of four roles, decided in this order: a day, a zoned time,
+an instant, then a zone. The zone test is by **shape** — an IANA name, which carries no `:`, or
+a bare offset such as `+05:30`. Temporal's own zone grammar cannot decide the role:
+it accepts a whole timestamp and reads the zone out of it, so
+`day('1999-01-01T00:00:00Z')` would answer today. That grammar also differs between
+implementations — `'T12:00:00Z'` is a zone to native Temporal and not to the
+polyfill — which would make the answer depend on the runtime.
 
 ```bash
 node examples/basic.mjs   # from a clone
@@ -195,6 +203,16 @@ reads, so refusing your own round-trip would be arbitrary.
 ```js
 const written = plainDate.toString({ calendarName: 'always' })  // '2026-01-31[u-ca=iso8601]'
 getYear(written)                                                // 2026
+```
+
+A calendar is refused where it is **applied**. On a day string it is, and with a `[Zone]`
+bracket it is, because the fields get renumbered. Without a bracket the string names an
+`Instant`, which has no year, month or day for a calendar to renumber, so the annotation is
+inert and `day()` answers:
+
+```js
+day('2026-08-08T20:00:00Z[u-ca=buddhist]')                    // '2026-08-08'
+day('2026-08-08T12:00[America/New_York][u-ca=buddhist]')      // throws
 ```
 
 Accepting `buddhist` and `roc` is planned; see `FUTURE.md` for the rule that would allow it.

@@ -110,9 +110,33 @@ const MOMENTS = [
   Infinity,
 ]
 
-// Malformed strings. Every export throws on every entry, except `isValid`,
-// which answers `false` by contract. `outcome` records the error class and the
-// message, so a throw that changes wording, or stops happening, moves the hash.
+// Well-formed timestamps, the input class day() accepts as a moment. Fixed
+// instants only, so no clock is read and every result is reproducible.
+//
+// MOMENTS and JUNK between them cover only Date objects, numbers and strings
+// that must be refused. Without this list the accept path has no cross-runtime
+// cover at all, which is the same shape of gap that let day() answer today for
+// an ISO timestamp.
+const INSTANTS = [
+  '1999-01-01T00:00:00Z', // the plain spelling
+  '1999-01-01T00:00:00.000Z', // with milliseconds
+  '19990101T000000Z', // compact
+  '2026-08-08T21:00:00+09:00', // an offset, not Z
+  '2026-08-08T20:00:00-04:00[America/New_York]', // an offset plus a named zone
+  '2026-08-08T20:00:00-04:00[!America/New_York]', // the critical spelling of it
+  '2026-08-08T20:00:00Z[u-ca=buddhist]', // a calendar with nothing to renumber
+  '1999-06-06[Asia/Tokyo]', // a day plus a zone, no time at all
+  '2026-08-08T12:00[America/New_York]', // a time plus a zone, no offset
+  '1969-07-20T20:17:00Z', // before the epoch
+  '-271821-04-20T00:00:00Z', // the lowest instant inside the day range
+  '+275760-09-13T00:00:00Z', // the highest
+]
+
+// Strings that must be refused. Every export throws on every entry where it
+// actually reads the value — first argument, or inside an interval. In the
+// second-argument slot 28 exports ignore the extra argument and answer normally,
+// and `isValid` answers `false` by contract. `outcome` records the value or the
+// error class and message either way, so any change of outcome moves the hash.
 //
 // This list exists because MOMENTS held only Date objects and numbers, so no
 // probe ever passed a bad *string*. That gap let day() read an ISO timestamp
@@ -122,15 +146,19 @@ const JUNK = [
   '11/12/2026', // November or December, unknowable
   '2026-08-08 12:00:00', // SQL DATETIME: a space, not a T
   '2026-08-08T12:00', // a time, but no offset, so no instant
-  '2026-08-08T12:00:00', // the same, with seconds
   '12:30:00', // a time alone
   '2026-08-08T25:00:00Z', // hour 25
   '2026-13-01', // month 13
   '2026-02-30', // a day that does not exist
-  '1999-06-06[Asia/Tokyo]', // a day wearing a zone annotation
   '2026-W32-5', // ISO week date, which daymath does not read
   '2026/08/08', // slashes
   '-2026-08-08', // a four-digit year may not carry a sign
+  'T12:00:00Z', // an ISO time alone: a zone to native Temporal, not to the polyfill
+  'T120000Z', // the compact spelling, which carries no colon to catch it
+  '2026-08-08T20:00:00-05:00[America/New_York]', // the offset contradicts the zone
+  '2026-08-08T20:00:00Z[Asia/Tokoy]', // a misspelled zone in the bracket
+  '2026-08-08T12:00[America/New_York][u-ca=buddhist]', // a zone and a calendar
+  '2026-08-08T12:00[UTC][u-ca=gregory]', // gregory leaked on every runtime once
   '2026-01-31[u-ca=buddhist]', // a real calendar annotation, refused
   '2026-01-31[!u-ca=buddhist]', // the critical spelling of it
   '[u-ca=[u-ca=[u-ca=x]]]', // bracket soup: probes the annotation regex alone
@@ -192,6 +220,16 @@ export function run(dm, PlainDate) {
       rows.push(
         outcome(() => fn(m, 'Asia/Tokyo')),
         outcome(() => fn(m, 'America/New_York')),
+      )
+    }
+    for (const t of INSTANTS) {
+      rows.push(
+        outcome(() => fn(t)),
+        outcome(() => fn(t, 'utc')),
+      )
+      rows.push(
+        outcome(() => fn(t, 'Asia/Tokyo')),
+        outcome(() => fn(t, 'America/New_York')),
       )
     }
     for (const j of JUNK) {

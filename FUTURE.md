@@ -93,6 +93,12 @@ Static `temporal-polyfill` class import still ships polyfill even when native Te
   The renumbering family cannot work this way: `addMonths` has no meaning when a year holds 13
   months and month lengths do not line up with ISO.
 
+  **Already true, and useful groundwork.** `day()` refuses a calendar only where it is
+  *applied*. `'2026-08-08T20:00:00Z[u-ca=buddhist]'` names an `Instant`, which has no fields
+  for a calendar to renumber, so the annotation is inert and the day is answered. The
+  refusal lives in one function, `assertIsoCalendar`, called from `toPlainDate` and from the
+  zoned path in `day()`. That is the single place this PR would widen.
+
   Two questions the PR must still answer:
 
   1. **`japanese` is era-based.** `.year` reads 2026 but `.eraYear` reads 8 for Reiwa 8. A

@@ -223,19 +223,106 @@ describe('day() — the one export that reads a clock', () => {
     assert.equal(dm.day('2026-08-08T21:00:00+09:00'), '2026-08-08')
     assert.equal(dm.day('2026-08-08T21:00:00+09:00', 'Asia/Tokyo'), '2026-08-08')
     assert.equal(dm.day('2026-08-08T23:00:00Z', 'Asia/Tokyo'), '2026-08-09')
+  })
+
+  it('lets a string that names its own zone keep its own day', () => {
+    // Temporal will not build a ZonedDateTime from a bare offset, so a bracket
+    // is the caller naming a zone. Reading the instant and applying UTC instead
+    // moved a browser's date by one, which is the failure daymath exists to stop.
+    const zdt = Temporal.ZonedDateTime.from('2026-08-08T20:00:00[America/New_York]')
+    assert.equal(zdt.toString(), '2026-08-08T20:00:00-04:00[America/New_York]') // control
+    assert.equal(zdt.toPlainDate().toString(), '2026-08-08') // the caller's own day
+    assert.equal(dm.day(zdt.toString()), '2026-08-08')
+    assert.equal(dm.day(zdt.toString({ timeZoneName: 'critical' })), '2026-08-08')
+    // toJSON writes the same spelling, so a JSON round trip lands here.
+    assert.equal(dm.day(JSON.parse(JSON.stringify({ t: zdt })).t), '2026-08-08')
+    // A day or a time plus a zone is unambiguous too, so both are accepted.
+    assert.equal(dm.day('1999-06-06[Asia/Tokyo]'), '1999-06-06')
+    assert.equal(dm.day('2026-08-08T12:00[America/New_York]'), '2026-08-08')
+
+    // The same instant without the bracket names no zone, so UTC applies.
+    assert.equal(dm.day('2026-08-08T20:00:00-04:00'), '2026-08-09')
+
+    // Two zones at once is a shape mistake, exactly as day('utc','Asia/Tokyo').
+    assert.throws(() => dm.day(zdt.toString(), 'Asia/Tokyo'), {
+      name: 'TypeError',
+      message: `daymath: day() got two time zones, ${JSON.stringify(zdt.toString())} and "Asia/Tokyo"`,
+    })
+
+    // Naming a zone and resolving as one are different questions. A string that
+    // names one and fails must throw. Falling back to the instant answered a UTC
+    // day for all of these, silently, and off by one for the first two.
+    for (const bad of [
+      '2026-08-08T20:00:00-05:00[America/New_York]', // the offset contradicts the zone
+      '2026-08-08T20:00:00+00:00[Asia/Tokyo]',
+      '2026-08-08T20:00:00Z[Asia/Tokoy]', // a typo in the zone name
+      '2026-08-08T20:00:00-04:00[Foo/Bar]',
+    ]) {
+      assert.throws(
+        () => dm.day(bad),
+        (err) => {
+          assert.ok(err instanceof RangeError)
+          assert.equal(
+            err.message,
+            `daymath: day() could not read ${JSON.stringify(bad)} in the time zone it names`,
+          )
+          assert.ok(err.cause instanceof Error) // the runtime's own error is kept
+          return true
+        },
+        `day(${JSON.stringify(bad)}) must not answer a UTC day`,
+      )
+    }
+
+    // The zoned path adjudicates the calendar like every other path. It returned
+    // '2026-08-08[u-ca=buddhist]' once — a value daymath itself refuses.
+    // A calendar is refused where it is APPLIED. With a zone bracket the fields
+    // get renumbered and toPlainDate() carries the annotation into the output,
+    // which returned '2026-08-08[u-ca=buddhist]' once — a value daymath refuses.
+    // It is settled on the string, before the parse, because native Temporal
+    // builds such a ZonedDateTime and the polyfill refuses to.
+    for (const s of [
+      '2026-08-08T12:00[America/New_York][u-ca=buddhist]',
+      '2026-08-08T12:00[America/New_York][!u-ca=buddhist]',
+      '1999-06-06[Asia/Tokyo][u-ca=hebrew]',
+      '2026-08-08T12:00[UTC][u-ca=gregory]', // gregory numbers match ISO
+    ]) {
+      assert.throws(() => dm.day(s), /must use the ISO 8601 calendar/)
+    }
+    // Without a zone bracket the calendar is inert, so it is ignored rather than
+    // refused. An Instant has no year, month or day for a calendar to renumber.
+    assert.equal(dm.day('2026-08-08T20:00:00Z[u-ca=buddhist]'), '2026-08-08')
+    assert.equal(dm.day('2026-08-08T20:00:00-04:00[u-ca=buddhist]'), '2026-08-09')
+    // And it accepts the one annotation daymath accepts anywhere else.
+    assert.equal(dm.day('2026-08-08T12:00[America/New_York][u-ca=iso8601]'), '2026-08-08')
     // The zone slot is checked by shape too, and for the same reason: hour 25
     // is a time zone to temporal-polyfill and not one to native Temporal, so
     // letting the implementation decide made the answer depend on the runtime.
-    for (const bad of ['2026-08-08T25:00:00Z', '1999-01-01T00:00:00Z', '11/12/2026']) {
+    for (const bad of [
+      '2026-08-08T25:00:00Z',
+      '1999-01-01T00:00:00Z',
+      '11/12/2026',
+      'T12:00:00Z',
+      'T120000Z',
+      // A non-string coerces inside .test(), so the typeof guard must come
+      // first. Each of these threw a foreign error once: "Cannot convert object
+      // to primitive value", "boom", "Cannot convert a Symbol value".
+      Object.create(null),
+      {
+        toString: () => {
+          throw new Error('boom')
+        },
+      },
+      Symbol('x'),
+    ]) {
       assert.throws(() => dm.day('2026-05-05', bad), {
         name: 'RangeError',
         message: `daymath: day() got an unknown time zone ${JSON.stringify(bad)}`,
       })
     }
-    // A zone is still a zone, and an offset spelling of one still works.
-    assert.equal(dm.day('Asia/Tokyo'), dm.day(undefined, 'Asia/Tokyo'))
+    // An offset spelling of a zone still works.
     assert.equal(dm.day('+05:30'), dm.day(undefined, '+05:30'))
     assert.equal(dm.day('+0530'), dm.day(undefined, '+0530'))
+    assert.equal(dm.day('Etc/GMT+5'), dm.day(undefined, 'Etc/GMT+5'))
   })
 
   it('refuses a string that is neither a moment nor a zone', () => {
@@ -243,13 +330,17 @@ describe('day() — the one export that reads a clock', () => {
     // of it. Letting it pick the role read a date as a zone and answered today.
     for (const bad of [
       '11/12/2026', // nobody can tell November from December in this
-      '05/05/2026',
-      '2026-08-08T12:00', // no offset, so it names no instant
-      '1999-06-06[Asia/Tokyo]',
-      '2026-01-01[America/New_York]',
+      '2026-08-08T12:00', // no offset and no zone, so daymath would have to pick
       '2026-W32-5',
       '12:30:00',
       '2026-08-08T25:00:00Z', // hour 25
+      // An ISO time-only string starts with T, so a letter-led zone rule let it
+      // through. Native Temporal reads a zone out of it and answers today; the
+      // polyfill refuses it. Both spellings and both cases must fail here.
+      'T12:00:00Z',
+      't12:00:00Z',
+      'T120000Z', // compact, so no colon to catch it
+      'T12:00:00+05:00',
     ]) {
       assert.throws(
         () => dm.day(bad),
@@ -451,8 +542,18 @@ describe('a PlainDate from another Temporal implementation', () => {
     assert.equal(dm.getYear(written), 2026)
     assert.equal(format('2026-01-31[!u-ca=iso8601]'), iso) // the critical spelling
     assert.equal(format('+002026-01-31[u-ca=iso8601]'), iso) // and the expanded year
+    // BCP-47 calendar keys are case-insensitive, and Temporal accepts this.
+    assert.equal(format('2026-01-31[u-ca=ISO8601]'), iso)
     // An impossible day inside a valid annotation still fails as a day.
     assert.throws(() => parse('2026-02-30[u-ca=iso8601]'), /invalid date/)
+
+    // day() shares one predicate with every other export, so it must agree with
+    // them on every annotated spelling. It refused all of these once.
+    for (const s of [written, '2026-01-31[!u-ca=iso8601]', '2026-01-31[u-ca=ISO8601]']) {
+      assert.equal(dm.day(s), iso, `day(${JSON.stringify(s)}) must match parse`)
+    }
+    // Including the refusal, and its exact wording.
+    assert.throws(() => dm.day('2026-01-31[u-ca=buddhist]'), /not "buddhist"/)
 
     // withCalendar is the deliberate way through, and daymath takes the result.
     assert.equal(format(buddhist.withCalendar('iso8601')), iso)
