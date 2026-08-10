@@ -2,7 +2,7 @@
 
 Checked-in backlog. Session handoff: local `todo.grok` (gitignored).
 
-**Live now:** `daymath@0.5.0` on npmjs · `@leemr/daymath@0.5.0` on GitHub Packages · https://leemr.github.io/daymath/
+**Live now:** `daymath@0.6.0` on npmjs · `@leemr/daymath@0.6.0` on GitHub Packages · https://leemr.github.io/daymath/
 
 ---
 

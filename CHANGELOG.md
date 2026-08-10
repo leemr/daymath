@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-08-09
+
 ### Changed
 
 - **daymath is built on `temporal-polyfill/fns` instead of the `Temporal` class, and nothing a caller can observe changes.** A class is one unit to a bundler — it cannot prove a method unreachable — so the class build shipped whole for the twenty-odd operations daymath uses. Free functions drop what is not called. Measured by `npm run size` in one run: the three-call program goes **24,735 B gzip to 16,295 B, −34%**; the whole surface goes 27,304 B to 21,550 B, −21%; the three-call program plus `day()` goes 25,269 B to 19,349 B, −23%. The baseline was re-recorded on purpose.
@@ -223,7 +225,8 @@ the range-error fixes that had been sitting unreleased since `0.2.3`.
 
 - Package name reserved on npm; stub `addDays` throws “not implemented”
 
-[Unreleased]: https://github.com/leemr/daymath/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/leemr/daymath/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/leemr/daymath/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/leemr/daymath/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/leemr/daymath/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/leemr/daymath/compare/v0.2.3...v0.3.0
