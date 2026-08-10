@@ -41,19 +41,25 @@ const runtime =
       : `Node ${process.versions.node}`
 const temporal = globalThis.Temporal ? 'native Temporal' : 'temporal-polyfill'
 
-// ─── which implementation did daymath SELECT? ───────────────────────
+// ─── which implementation is daymath RUNNING ON? ────────────────────
 //
-// The banner above says what the RUNTIME has. It says nothing about what daymath picked, and that
-// gap is exactly how a defect shipped: `index.js` was switched to `temporal-polyfill/full`, whose
-// entry does no native selection, so daymath ran the bundled polyfill on Node 26 and Deno while
-// this banner still read "native Temporal". Nothing failed. It was found by hand.
+// The banner above says what the RUNTIME has. It says nothing about what daymath ended up running,
+// and that gap is exactly how a defect shipped: `index.js` was switched to `temporal-polyfill/full`,
+// whose entry does no native selection, so daymath ran the bundled polyfill on Node 26 and Deno
+// while this banner still read "native Temporal". Nothing failed. It was found by hand.
 //
-// So assert the selection, on every lane.
+// So assert it, on every lane.
 //
-// The observable is the message daymath re-throws on `cause`: daymath's own errors carry no Temporal
-// text, but the original is kept, and the two implementations word the same failure differently. The
-// two expected messages are asked of each implementation at run time rather than hardcoded, so a
-// polyfill release that rewords its error cannot make this silently pass.
+// **What this checks moved down a layer in the fns port, and it did not get weaker.** `index.js` no
+// longer reads `globalThis.Temporal` at all — `temporal-polyfill/fns` picks between its native and
+// shim funcApi itself. So this now asserts that FNS made the right choice, which is the layer that
+// actually decides. A regression there is invisible to every other gate, because `getAny` makes the
+// two paths agree on every ANSWER; only the error wording separates them.
+//
+// The observable is unchanged: the message daymath re-throws on `cause`. daymath's own errors carry
+// no Temporal text, but the original is kept, and the two implementations word the same failure
+// differently. Both expected messages are asked of each implementation at run time rather than
+// hardcoded, so a polyfill release that rewords its error cannot make this silently pass.
 const OUT_OF_RANGE = '+275761-01-01'
 
 /** @param {{PlainDate: {from(s: string): unknown}}} impl */
@@ -66,7 +72,7 @@ function messageFrom(impl) {
   }
 }
 
-/** What daymath's own error carries from underneath. */
+/** What daymath's own error carries from underneath, which names the implementation it ran. */
 function daymathCause() {
   try {
     dm.parse(OUT_OF_RANGE)
@@ -77,7 +83,20 @@ function daymathCause() {
   }
 }
 
-/** Can this Temporal build a calendar beyond the two every build has? Mirrors index.js. */
+/**
+ * Can this Temporal build a calendar beyond the two every build has?
+ *
+ * This no longer mirrors `index.js` — the fns port deleted that helper, because daymath stopped
+ * selecting.
+ *
+ * **It is deliberately STRICTER than what `fns` does, and that is why it stays.** `fns` selects on
+ * bare presence: `chunks/root.js` is one line, `const NativeTemporal = globalThis.Temporal`. This
+ * asks whether the global can actually build a calendar. The two answers differ in exactly one
+ * case — an app that installed the BASE polyfill as a global — and there the capability answer is
+ * the one that keeps the lane honest, because `fns` running a base global is running the bundled
+ * build whatever the variable is named. No CI lane installs a global, so the case cannot fire
+ * here; it is the reader who needs to know which rule this models.
+ */
 function buildsExoticCalendars(candidate) {
   if (candidate?.PlainDate?.from === undefined) return false
   const exotic = Intl.supportedValuesOf('calendar')
@@ -105,7 +124,7 @@ let selected = 'unknown'
 const selectionErrors = []
 if (causeMessage === null) {
   selectionErrors.push(
-    `daymath did not throw on ${OUT_OF_RANGE}, so the selection cannot be read`,
+    `daymath did not throw on ${OUT_OF_RANGE}, so the implementation cannot be read`,
   )
 } else if (bundledMessage === null) {
   selectionErrors.push(
@@ -120,7 +139,7 @@ if (causeMessage === null) {
   selected = causeMessage === bundledMessage ? 'bundled' : 'native'
   if (selected !== expected) {
     selectionErrors.push(
-      `daymath selected the ${selected} implementation where the runtime called for ${expected}` +
+      `daymath ran on the ${selected} implementation where the runtime called for ${expected}` +
         ` (cause ${JSON.stringify(causeMessage)}, bundled says ${JSON.stringify(bundledMessage)})`,
     )
   }
@@ -141,7 +160,7 @@ const calls = names.length > 0 ? names.length * results[names[0]].length : 0
 
 console.log(`daymath cross-runtime — ${runtime}, ${temporal}`)
 console.log(
-  `daymath selected the ${selected} implementation, and this runtime calls for ${expected}` +
+  `daymath ran on the ${selected} implementation, and this runtime calls for ${expected}` +
     (globalIsCapable ? '' : ' (no calendar-capable global Temporal here)'),
 )
 for (const problem of selectionErrors) console.error(`SELECTION: ${problem}`)

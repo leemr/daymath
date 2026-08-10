@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **daymath is built on `temporal-polyfill/fns` instead of the `Temporal` class, and nothing a caller can observe changes.** A class is one unit to a bundler — it cannot prove a method unreachable — so the class build shipped whole for the twenty-odd operations daymath uses. Free functions drop what is not called. Measured by `npm run size` in one run: the three-call program goes **24,735 B gzip to 16,295 B, −34%**; the whole surface goes 27,304 B to 21,550 B, −21%; the three-call program plus `day()` goes 25,269 B to 19,349 B, −23%. The baseline was re-recorded on purpose.
+- **`getAny` is the calendar resolver, and a narrower one would have been a defect.** `fns` takes the resolver as a required argument, and it fixes at build time which calendars the bundle admits. Under `getISO` the same program answers two ways: the native funcApi keeps `[u-ca=buddhist]` and reads 2569, the shim funcApi drops the annotation and reads 2026. Node 20 and Bun are the shim lanes in CI. `getAny` carries the calendar data itself and answers identically with no global, with a base polyfill global, with a full one, and on native — so daymath's calendar rule stays a measurement rather than becoming a build-time list. It is the 4.2 kB the calendars already cost in 0.5.0, now paid at a different layer.
+- **daymath no longer reads `globalThis.Temporal` at all.** The selection block 0.5.0 added is deleted, along with the `c8 ignore` regions that covered its unreachable branches. `fns` picks its own funcApi, and `getAny` makes that choice unobservable in every answer, so the defect class 0.5.0 shipped and then fixed — a base polyfill global silently costing three of four calendars, decided by import order — cannot recur here. The child-process test that installs a base global still passes and now proves something stronger.
+
+### Fixed
+
+- **`differenceInDays` uses `fns` `diff`, not `diffDays`, and the reason is the one day where Temporal's two ranges disagree.** `PlainDate`'s minimum is `-271821-04-19`, one day below `PlainDateTime`'s, because midnight on that day is out of bounds while the day itself is reachable in a positive-offset zone. The maximum is not widened, so only the low edge has it. `diffDays` converts to a `PlainDateTime` and inherits the narrower limit, so it throws on exactly that one operand; `diff` with `largestUnit: 'day'` does not, and answers what the class API's `since` answered. Caught by the cross-runtime baseline, which turned `differenceInDays` and `differenceInWeeks` red. No test in the suite covers a pair that wide.
+
+### Verified
+
+- **Every export answers identically, before and after.** The battery was run against both implementations in one process and compared row by row: **69 exports, 62,928 calls, 0 differences.** The cross-runtime baseline is unchanged and passes on Node 26.7.0, Deno 2.9.5 and Bun 1.3.14 — a re-record would have hidden exactly this. The differential harness against date-fns is unchanged and green over 1900-2100, coverage stays 100% on lines, functions and branches, and the 94 tests pass unedited.
+
 ## [0.5.0] — 2026-08-09
 
 ### Added
