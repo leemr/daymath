@@ -14,24 +14,31 @@ start until that call is answered.
 
 | # | Name | What it does | Blocked by | Version |
 |---|---|---|---|---|
-| 1 | **fns port** | rewrite the internal `Temporal.` call sites onto `fns` | Orphan days | 0.6.0 |
-| 2 | **Size badge** | `docs/size.json` and a shields endpoint, so history lives in git | — | no release |
-| 3 | **Business days** | business-day helpers and the ISO week suite | — | 0.7.0 |
-| 4 | **npm provenance** | publish from Actions with OIDC instead of a laptop token | — | mechanics |
-| 5 | **JSDoc examples** | deeper `@example` on the hot exports | — | patch |
-| 6 | **Awesome-list** | submit to an existing awesome list | a stable API | external |
+| 1 | **Size badge** | `docs/size.json` and a shields endpoint, so history lives in git | — | no release |
+| 2 | **Business days** | business-day helpers and the ISO week suite | — | 0.7.0 |
+| 3 | **npm provenance** | publish from Actions with OIDC instead of a laptop token | — | mechanics |
+| 4 | **JSDoc examples** | deeper `@example` on the hot exports | — | patch |
+| 5 | **Awesome-list** | submit to an existing awesome list | a stable API | external |
+| 6 | **Prose sweep for 1.0** | move supporting narrative out of this file and the source headers into `todo.claude` | — | no release |
+
+**Row 6, noted 2026-08-09.** This file and several source headers carry the REASONING behind a
+decision as well as the decision. The reasoning belongs in the local `todo.claude`, which is the
+deep record; this file should carry what remains to do and the one-line cost of each. Do it in one
+deliberate pass at 1.0, not opportunistically, or the record gets split with no rule to find it by.
 
 **There is no "extend `test:runtimes` for the calendar split" row, and there must not be one.**
-That row was drafted and then measured away, so the reason is recorded here rather than repeated.
+That row was drafted and then measured away. The port is done and it still holds, so the reason is
+recorded here rather than re-derived.
 
-The native-vs-shim disagreement inside `temporal-polyfill/fns` is real, and daymath does not use
-that layer yet. The class API has no such split either, now for a stronger reason than before:
-`temporal-polyfill/full` builds every calendar on both paths, and the cross-runtime baseline
-passes byte-identically on Node 26, deno (both native Temporal) and bun (the polyfill).
+The native-vs-shim disagreement inside `temporal-polyfill/fns` is real, and daymath now runs on
+that layer. It is closed by the resolver, not by a harness: **`getAny` carries every calendar's
+data, so both funcApi paths answer identically.** `getISO` does not — it drops the annotation on
+the shim path — and the header of `index.js` records that as the reason the resolver may never be
+narrowed.
 
-**The net that will catch the port's hazard already exists.** `scripts/battery.mjs` carries an
-explicit `CALENDARS` list — accepted annotations, including the critical `!` spelling and a mixed
-pair — plus refused ones in `JUNK`, and CI runs both Temporal paths:
+**The net that would catch a regression already exists.** `scripts/battery.mjs` carries an explicit
+`CALENDARS` list — accepted annotations, including the critical `!` spelling and a mixed pair —
+plus refused ones in `JUNK`, and CI runs both Temporal paths:
 
 | lane | Temporal |
 |---|---|
@@ -40,16 +47,15 @@ pair — plus refused ones in `JUNK`, and CI runs both Temporal paths:
 | deno | native |
 | bun | `temporal-polyfill` |
 
-A port that reached the fns layer with `getISO` would silently drop the annotation on the shim
-lanes and answer `2026` where the native lanes answer `2569`. The hash for `getYear` would move,
-and Node 20 and bun would go red. So the port needs no new harness — it needs this one to stay
-green.
+Narrowing the resolver would silently drop the annotation on the shim lanes and answer `2026`
+where the native lanes answer `2569`. The hash for `getYear` would move, and Node 20 and bun would
+go red. Keep this one green and the hazard stays closed.
 
 ### Product calls that block a row
 
 | Name | The question | What the answer costs |
 |---|---|---|
-| **Orphan days** | 5 historical days answer differently if `day()` reads the date part of the string | buys 1.9 kB gzip; changes 0.5.0 behaviour |
+| **Orphan days** | rebuild `day()` on `Intl`, so 5 historical days read the date part instead of resolving the instant | buys 1.9 kB gzip; changes 0.5.0 behaviour. **Blocks nothing** — the port keeps Temporal in `day()` |
 | **setDate rolling** | daymath constrains, date-fns rolls | blocks nothing; see API / product below |
 
 ### Not a pull request
@@ -96,26 +102,28 @@ green.
 
 ## Bundle size (client)
 
-Static `temporal-polyfill` class import still ships polyfill even when native Temporal exists.
+**The port SHIPPED.** `index.js` is built on `temporal-polyfill/fns`, so shapes A, B and F are fns
+shapes now. Measured in one run: **24,735 B gzip to 16,295 B on the three-call program, −34%**;
+27,304 to 21,550 at whole surface; 25,269 to 19,349 with `day()`. The baseline was re-recorded
+deliberately.
 
-**The rig is checked in: `npm run size`.** Twelve shapes, one esbuild, one process. `--run` executes
-every fixture first, so a program that throws can never be quoted as a size. `npm run size:check`
-is the CI gate; `npm run size:write` moves the baseline, deliberately. Read the numbers from the
-rig, not from here — absolute byte counts do not transfer between experiments, and only an A/B
-made inside one run is evidence.
+**The rig is checked in: `npm run size`.** Twelve shapes, one esbuild, one process. `--run`
+executes every fixture first, so a program that throws can never be quoted as a size.
+`npm run size:check` is the CI gate; `npm run size:write` moves the baseline, deliberately. Read
+the numbers from the rig, not from here — absolute byte counts do not transfer between
+experiments, and only an A/B made inside one run is evidence.
 
 - ~~Dynamic import / optional peer for native Temporal~~ — **measured, dead end.** The polyfill still ships in a lazy chunk, and it forces the whole API async.
-- **`temporal-polyfill/fns/PlainDate` is the live option.** Run `npm run size` for the number; do
-  not quote one from here. The two mechanisms are what is durable, and both still hold.
+- **Never quote a model fixture as a port's cost.** Two were built to predict this port and both
+  under-stated the real bundle, because a fixture reaches less of the `fns` surface than daymath
+  does. Both were deleted once shape A measured the real thing. The rule is written where it can
+  stop a repeat, in `scripts/bundle-size.mjs` above the summary lines.
 - **The win needs the caller to tree-shake**, because `fns/PlainDate.js` statically imports both
   `funcApi-native.js` and `funcApi-shim.js` and picks with `NativeTemporal ? … : …`. Nothing shakes
   when a caller reaches everything.
-- **Beware comparing a class-API shape against an fns shape now.** Shapes A, B and F reach
-  `index.js`, which carries the full polyfill for the calendars; the fns shapes import the `fns`
-  tree directly and carry no calendar support. So an A-versus-D delta is not like-for-like. The
-  honest post-calendars row is A against **I**, `fns, ISO + buddhist + roc`. Fixture C has the same
-  problem: it imports the BASE polyfill, so the printed A−C delta mixes the calendar data into
-  daymath's own cost. Measured properly, daymath's own code is about 1.0 kB, not 4.8 kB.
+- **Fixture C is not a like-for-like row against A any more.** It imports the BASE polyfill CLASS
+  build, so an A−C delta compares two different layers, not daymath's own cost. The honest
+  neighbours for A are the `fns` shapes below it.
 - **Returning a real `PlainDate` costs the whole saving and more** (+14.5 kB), because
   `fns.toTemporal` needs a free `Temporal` global and throws without one, so the class API comes
   back in. Returning strings is what keeps this option open.
@@ -141,13 +149,22 @@ made inside one run is evidence.
   1994-12-31, `Pacific/Kwajalein` 1993-08-21. Baseline asserted in `scripts/intl-day.mjs`;
   re-walk with `npm run test:intl-day:sweep`.
 
-  **Open product call:** on those five days Temporal answers the next day, and the date part
-  answers the day the caller wrote. daymath is a day library and never resolves an instant, so
-  the date part is arguably the more honest answer — but it is a behaviour change from 0.5.0.
-- **The calendars already spent 4,227 B gzip, +20.6%**, because `temporal-polyfill/full` replaced
-  the base build in 0.5.0. That is in every shape reaching `index.js`, so it is in the baseline
-  the rig now compares against, not a future cost.
-- Measure in a real app (e.g. itrvl) before rewriting  
+  **This is a cost of the Intl proposal, not a defect today, and it blocks nothing.** `day()` calls
+  Temporal directly — `Temporal.ZonedDateTime.from`, `Temporal.Instant.from`,
+  `Temporal.Now.plainDateISO` — so daymath already answers exactly what Temporal answers on all
+  five days. Verified 2026-08-09 against `Temporal.ZonedDateTime.from(...).toPlainDate()`, five of
+  five agreeing, with an ordinary-zone control passing. **A port keeps that**, because the fns
+  layer has `Instant`, `ZonedDateTime` and `Now` subpaths.
+
+  **Open product call, and it is optional:** rebuild `day()` on `Intl` instead. On those five days
+  Temporal answers the next day, and the date part answers the day the caller wrote. daymath is a
+  day library and never resolves an instant, so the date part is arguably the more honest answer —
+  but it is a behaviour change from 0.5.0. Measured price of NOT taking it: **1.9 kB gzip**, shape
+  K against shape L in `npm run size`.
+- **The calendars cost 4.2 kB gzip and still do**, now as `getAny` rather than
+  `temporal-polyfill/full`. It is paid at a different layer, not saved. That is already in the
+  16,295 B baseline, so it is not a future cost.
+- Measure in a real app (e.g. itrvl) now that the port has landed  
 
 ---
 

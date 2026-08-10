@@ -30,18 +30,18 @@ const fixture = (name) =>
  * anything in this repo having changed. They are still measured and printed.
  */
 const SHAPES = [
-  { id: 'A', entry: 'a-class-3.mjs', label: 'class API, 3 calls (today)', gate: true },
+  { id: 'A', entry: 'a-class-3.mjs', label: 'daymath, 3 calls (today)', gate: true },
   {
     id: 'B',
     entry: 'b-class-all.mjs',
-    label: 'class API, whole surface',
+    label: 'daymath, whole surface',
     baseline: 'A',
     gate: true,
   },
   {
     id: 'C',
     entry: 'c-polyfill-only.mjs',
-    label: 'temporal-polyfill alone, no daymath',
+    label: 'temporal-polyfill CLASS build alone, no daymath',
     baseline: 'A',
   },
   {
@@ -59,7 +59,7 @@ const SHAPES = [
   {
     id: 'F',
     entry: 'f-class-3-plus-day.mjs',
-    label: 'class API + day()',
+    label: 'daymath + day()',
     baseline: 'A',
     gate: true,
   },
@@ -258,10 +258,27 @@ const a = byId.get('A')
 const d = byId.get('D')
 const f = byId.get('F')
 const g = byId.get('G')
+const k = byId.get('K')
+const l = byId.get('L')
 console.log('')
+// Every line below is computed from THIS run. The class-API number this port replaced was
+// 24,735 B, and it is deliberately not quoted here: it came from a different run, and the rule at
+// the top of this file is that only a comparison made inside one run is evidence. CHANGELOG.md and
+// README.md carry the before-and-after, where a stamped date makes the mixed toolchain visible.
+//
+// No model of the port lives here, and one must not be added back. Two did, to price the port
+// before it was paid, and both under-stated the real bundle, because a fixture reaches less of the
+// fns surface than daymath does. Shape A measures the real thing.
+//
+// D stays a floor nobody can build: it carries no calendars and no clock door.
 console.log(
-  `The port is worth ${signed(d.gzip - a.gzip)} gzip on the three-call program.`,
+  // `kb`, not `signed`: this is a saving, so a leading + or − in front of the word "save" reads
+  // as the opposite of what it is.
+  `Rebuilding day() on Intl would save ${kb(l.gzip - k.gzip)} (K against L) and costs the five orphan days.`,
 )
 console.log(
-  `day() costs ${signed(f.gzip - a.gzip)} in the class API and ${signed(g.gzip - d.gzip)} in a fns port.`,
+  `Dropping the calendars and day() would be ${signed(d.gzip - a.gzip)}, but that is shape D and not an offer.`,
+)
+console.log(
+  `day() costs ${signed(f.gzip - a.gzip)} in daymath and ${signed(g.gzip - d.gzip)} in a bare fns program.`,
 )

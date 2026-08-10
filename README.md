@@ -155,8 +155,11 @@ Amounts are finite integers.
 
 ## Temporal
 
-Uses global `Temporal` when present; otherwise [`temporal-polyfill`](https://www.npmjs.com/package/temporal-polyfill),
-which does that resolution itself — so on a runtime with native Temporal the polyfill steps aside.
+Built on [`temporal-polyfill/fns`](https://www.npmjs.com/package/temporal-polyfill), the functional
+API, rather than the `Temporal` class. A class is one unit to a bundler, so the class build shipped
+whole for the twenty-odd operations daymath uses; free functions drop what you do not call. It runs
+on native `Temporal` where the runtime has it and on the bundled build elsewhere, and `fns` makes
+that choice itself. Measured on a three-call program: **24.7 kB gzip to 16.3 kB, −34%.**
 
 A `Temporal.PlainDate` from *any* implementation is accepted — native, the bundled polyfill,
 or a second copy of it in the same dependency tree. daymath reads its ISO day and builds its
@@ -312,9 +315,11 @@ Temporal.PlainDate.from({year: 2569, month: 8, day: 8, calendar: 'buddhist'}).to
 One more trap in the same family: `'2569-08-08[u-ca=buddhist]'` is a valid string, and its
 `getYear` is **3112**. The date part is ISO 2569, and the annotation adds 543 on top.
 
-Supporting these calendars needs `temporal-polyfill/full`, because the base build cannot construct
-them where the runtime has no native Temporal. That costs **4.2 kB gzip**, and it is what makes
-the answers identical on every runtime rather than only on the ones with native Temporal.
+Supporting these calendars costs **4.2 kB gzip**, because daymath resolves them with `getAny`, the
+`fns` resolver that carries every calendar's data. The narrower resolvers cannot serve the rule: on
+a runtime without native `Temporal` they drop the annotation instead of refusing it, so the same
+program would answer 2569 on one lane and 2026 on another. `getAny` answers identically everywhere,
+which is the point.
 
 Error messages quote no Temporal text, because implementations word the same failure
 differently. The original error is on `cause`.

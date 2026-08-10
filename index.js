@@ -1,33 +1,34 @@
 /** daymath — calendar date math (ISO 8601 day). date-fns-shaped. No Date. No time zones. */
-// The selection is HERE on purpose, and it must not be removed again.
+// daymath reaches Temporal through `temporal-polyfill/fns`, the tree-shakable functional API, not
+// through the `Temporal` class. A class is one unit to a bundler, because it cannot prove a method
+// unreachable, so the class API shipped the whole polyfill for the ~20 operations used here.
+// Measured on a three-call program by `npm run size`, shape A: 24,735 B gzip to 16,295 B, −34%.
+// Nothing a caller can observe changes.
 //
-// `temporal-polyfill`'s base entry resolves `globalThis.Temporal || bundled` itself, so importing
-// it gave native Temporal for free. But that base build can construct only iso8601 and gregory, so
-// it cannot serve the calendar rule below. `temporal-polyfill/full` can construct sixteen — and its
-// entry is a bare re-export with NO selection, so importing it alone silenced native Temporal on
-// every runtime, including Node 26 and Deno. Round 1 of a review caught that.
+// **`getAny` is required, and `getISO` would be a defect.** `fromString` takes the calendar
+// resolver as a REQUIRED second argument, and it is the set of calendars the bundle admits. With
+// `getISO` the same program answers two ways: the native funcApi keeps `[u-ca=buddhist]` and reads
+// 2569, the shim funcApi drops the annotation and reads 2026. Node 20 and bun are the shim lanes in
+// CI. `getAny` carries the calendar data itself and answers identically on every path, measured
+// with no global, with a BASE polyfill global, with a FULL one, and on native. That costs 4.2 kB
+// and it is what keeps the calendar rule below a MEASUREMENT rather than a build-time list.
 //
-// Round 2 then caught the naive repair. A global `Temporal` is NOT necessarily native: an app doing
-// `import 'temporal-polyfill/global'` installs the BASE build, and the polyfill's own README calls
-// that the most common entry point. Selecting it blindly cost daymath three of its four calendars
-// on Node 20 and 22, which have no native Temporal, and the error blamed the caller's calendar
-// rather than naming the capability loss. Import order decided it, which is worse than a wrong
-// answer. So the candidate is PROBED, not trusted.
+// It also retires the selection block this file used to carry. daymath no longer reads
+// `globalThis.Temporal` at all, so the 0.5.0 defect class — a base polyfill global silently costing
+// three of four calendars, decided by import order — cannot recur here. `fns` picks its own funcApi
+// and `getAny` makes that choice unobservable.
 //
-// The probe names no calendar. It asks the runtime for one, which keeps the "method, not a list"
-// rule that governs the calendar surface below.
-//
-// Measured: the selection costs 17 B gzip, because the polyfill ships either way — a bundler cannot
-// know at build time whether the runtime has Temporal, which is why FUTURE.md records dynamic
-// import as a dead end. Native and the bundled full build agree on every calendar daymath touches:
-// 464 date/calendar pairs over the four accepted calendars from 1900 to 2100, plus the eleven
-// refused ones, with zero disagreements.
-//
-// Native matters for three reasons beyond taste. daymath's contract is Temporal's behaviour, and
-// native IS Temporal. The deno CI lane exists to prove the polyfill and the standard agree, and it
-// cannot prove that if daymath runs the polyfill there. And an engine-level Temporal fix then
-// reaches callers with no release from here.
-import { Temporal as bundledTemporal } from 'temporal-polyfill/full'
+// `Duration` is deliberately not imported. `add(record, durationRecord)` needs one, but every
+// daymath call moves a single unit, so `addDays` / `addMonths` / `addYears` serve instead and that
+// whole subpath stays out of the bundle.
+import * as PlainDateFns from 'temporal-polyfill/fns/PlainDate'
+import { getAny } from 'temporal-polyfill/fns/Calendar'
+import * as InstantFns from 'temporal-polyfill/fns/Instant'
+import * as ZonedFns from 'temporal-polyfill/fns/ZonedDateTime'
+import * as NowFns from 'temporal-polyfill/fns/Now'
+
+/** The ISO calendar record, resolved once. `isoOf` runs on every two-date export. */
+const ISO_CALENDAR = getAny('iso8601')
 
 /**
  * Every calendar this runtime names. Read once, lowercased, because BCP-47 keys are
@@ -41,55 +42,6 @@ import { Temporal as bundledTemporal } from 'temporal-polyfill/full'
 const RUNTIME_CALENDARS = new Set(
   Intl.supportedValuesOf('calendar').map((id) => id.toLowerCase()),
 )
-
-/**
- * Can this Temporal build a calendar beyond the two every build has?
- *
- * The cast is needed because `Temporal` is not declared on `globalThis` in the type space, and
- * daymath deliberately installs no global of its own.
- * @param {unknown} candidate
- * @returns {candidate is typeof bundledTemporal}
- */
-/*
- * Every branch here turns on `globalThis.Temporal`, which is read once at module load. A test in
- * this process cannot change it after the fact, so none of these branches is reachable from the
- * suite. They are covered three other ways, and each is real:
- *
- * 1. `test.js` spawns a CHILD process that installs the BASE polyfill global and then imports
- *    daymath. That is the exact scenario this function exists for, and it asserts the four
- *    calendars survive. A child's execution does not count toward this file's coverage.
- * 2. The Node 20 and bun CI lanes have no native Temporal, so they take the fallback for real.
- * 3. `npm run test:runtimes` proves every lane answers identically.
- */
-/* c8 ignore start */
-function buildsExoticCalendars(candidate) {
-  const temporal = /** @type {typeof bundledTemporal | undefined} */ (candidate)
-  if (temporal?.PlainDate?.from === undefined) return false
-  // Ask the runtime for a calendar rather than naming one. The two excluded here are the pair every
-  // build can construct, so anything else proves the exotic calendar data is present.
-  const exotic = [...RUNTIME_CALENDARS].find((id) => id !== 'iso8601' && id !== 'gregory')
-  if (exotic === undefined) return true // nothing to prove it against
-  try {
-    temporal.PlainDate.from('2026-01-31').withCalendar(exotic)
-    return true
-  } catch {
-    return false
-  }
-}
-/* c8 ignore stop */
-
-// The fallback needs a runtime whose global Temporal is absent or not calendar-capable, so a process
-// with native Temporal cannot reach it. It is covered for real by the Node 20 and bun CI lanes, and
-// `npm run test:runtimes` proves those lanes answer identically to the native ones.
-// One cast, because `Temporal` is not declared on `globalThis` in the type space and daymath
-// deliberately installs no global of its own.
-const globalTemporal = /** @type {{Temporal?: unknown}} */ (globalThis).Temporal
-
-// The fallback needs a runtime whose global Temporal is absent or not calendar-capable, so a process
-// with native Temporal cannot reach it. It is covered for real by the Node 20 and bun CI lanes, and
-// `npm run test:runtimes` proves those lanes answer identically to the native ones.
-/* c8 ignore next */
-const Temporal = buildsExoticCalendars(globalTemporal) ? globalTemporal : bundledTemporal
 
 /**
  * ISO 8601 calendar day string:
@@ -169,9 +121,12 @@ function hasZoneAnnotation(text) {
 const ZONE_LIKE =
   /^(?:(?![Tt]\d)[A-Za-z][A-Za-z0-9_+.-]*(?:\/[A-Za-z0-9_+.-]+)*|[+-]\d{2}(?::?\d{2})?)$/u
 
-// `Temporal` is a const now, not an imported namespace, so it cannot carry types. `PlainDate` has
-// seven use sites, so a typedef earns itself. `Instant` and `ZonedDateTime` have one each and are
-// inlined, because measured the typedef plus its use is longer than the inline form.
+// Two different things wear the name PlainDate here, and keeping them apart is the whole type
+// story of this file. `PlainDateRecord` is daymath's INTERNAL value, and the name is the polyfill's
+// own for it. `PlainDate` is the public INPUT type, a real `Temporal.PlainDate` object from any
+// implementation, which callers still pass and `isPlainDate` still recognises by brand. daymath
+// never returns one.
+/** @typedef {import('temporal-polyfill/fns/PlainDate').Record} PlainDateRecord */
 /** @typedef {import('temporal-polyfill').Temporal.PlainDate} PlainDate */
 /** @typedef {string | PlainDate} DayInput */
 /**
@@ -281,9 +236,12 @@ function calendarRule(calendar) {
   let verdict = { reason: 'renumbers' }
   try {
     const offsets = new Set()
+    // `getAny(calendar)` throws for an id the polyfill cannot build, which is the `unknown` case
+    // below. It is resolved once rather than per probe.
+    const calendarRecord = getAny(calendar)
     for (const probe of CALENDAR_PROBES) {
-      const iso = Temporal.PlainDate.from(probe)
-      const dated = iso.withCalendar(calendar)
+      const iso = PlainDateFns.fromString(probe, getAny)
+      const dated = PlainDateFns.withCalendar(iso, calendarRecord)
       if (dated.month !== iso.month || dated.day !== iso.day) {
         offsets.clear()
         break
@@ -363,7 +321,7 @@ function isPlainDate(value) {
  * reasons live on `supportedCalendar`; this function only applies the verdict.
  * @param {unknown} value
  * @param {string} label
- * @returns {PlainDate}
+ * @returns {PlainDateRecord}
  */
 function toPlainDate(value, label = 'date') {
   if (value instanceof Date) {
@@ -387,10 +345,15 @@ function toPlainDate(value, label = 'date') {
     )
   }
   try {
-    const plain = Temporal.PlainDate.from(bare)
+    // The bare day is parsed with the ISO resolver's own entry point. `getAny` is passed as the
+    // resolver rather than called, because `fromString` calls it with whatever the string names,
+    // and a bare day names nothing.
+    const plain = PlainDateFns.fromString(bare, getAny)
     // The annotation rides along, so getYear answers 2569 for a Buddhist day and every
     // returned string keeps the calendar the caller named.
-    return calendar === undefined ? plain : plain.withCalendar(calendar)
+    return calendar === undefined
+      ? plain
+      : PlainDateFns.withCalendar(plain, getAny(calendar))
   } catch (err) {
     throw new RangeError(`daymath: invalid ${label} ${JSON.stringify(text)}`, {
       cause: err,
@@ -405,16 +368,18 @@ function toPlainDate(value, label = 'date') {
  * `equals` compares the calendar as well as the day. Neither matters to a day count: a day is the
  * same day whatever the year is labelled, so daymath normalises and answers. Only the exports that
  * *read* or *write* a field honour the label.
- * @param {PlainDate} plain
- * @returns {PlainDate}
+ * @param {PlainDateRecord} plain
+ * @returns {PlainDateRecord}
  */
 function isoOf(plain) {
-  return plain.calendarId === 'iso8601' ? plain : plain.withCalendar('iso8601')
+  return plain.calendarId === 'iso8601'
+    ? plain
+    : PlainDateFns.withCalendar(plain, ISO_CALENDAR)
 }
 
-/** @param {PlainDate} plain @returns {string} */
+/** @param {PlainDateRecord} plain @returns {string} */
 function toDayString(plain) {
-  return plain.toString()
+  return PlainDateFns.toString(plain)
 }
 
 /** @param {unknown} n @param {string} label */
@@ -455,14 +420,29 @@ function guardRange(label, op) {
 /**
  * Shared body for every add/sub function. Each caller passes its own name, so
  * the message never reports a function the caller did not call.
+ *
+ * The unit is a parameter rather than a duration object on purpose. `PlainDateFns.add` would need a
+ * `DurationRecord`, which means importing `fns/Duration`, and every daymath caller moves exactly
+ * one unit. `addDays` / `addMonths` / `addYears` take a plain number and keep that subpath out of
+ * the bundle. Subtraction is a negative amount, exactly as it was when this passed `-amount`.
+ *
+ * `addMonths` and `addYears` clamp by default, which is daymath's one overflow rule and the same
+ * behaviour the class API gave: 31 January plus one month is 28 February.
  * @param {DayInput} date
- * @param {{ days?: number, months?: number, years?: number }} delta
+ * @param {'days'|'months'|'years'} unit
+ * @param {number} amount
  * @param {string} label
  * @returns {string}
  */
-function addDuration(date, delta, label) {
+function addDuration(date, unit, amount, label) {
   const d = toPlainDate(date)
-  return guardRange(label, () => toDayString(d.add(delta)))
+  const move =
+    unit === 'days'
+      ? PlainDateFns.addDays
+      : unit === 'months'
+        ? PlainDateFns.addMonths
+        : PlainDateFns.addYears
+  return guardRange(label, () => toDayString(move(d, amount)))
 }
 
 /** @param {unknown} dates */
@@ -486,7 +466,7 @@ function weekStartsOnFrom(options) {
 
 /**
  * @param {unknown} interval
- * @returns {{ start: PlainDate, end: PlainDate }}
+ * @returns {{ start: PlainDateRecord, end: PlainDateRecord }}
  */
 function toInterval(interval) {
   // `typeof x === 'object'` alone let a Date, an array or a PlainDate through,
@@ -580,9 +560,9 @@ export function day(moment, tz) {
   const isMoment = isDay || moment instanceof Date || typeof moment === 'number'
 
   let zone = tz
-  /** @type {import('temporal-polyfill').Temporal.Instant | undefined} */
+  /** @type {import('temporal-polyfill/fns/Instant').Record | undefined} */
   let instant
-  /** @type {import('temporal-polyfill').Temporal.ZonedDateTime | undefined} */
+  /** @type {import('temporal-polyfill/fns/ZonedDateTime').Record | undefined} */
   let zoned
   if (!isMoment && moment !== undefined && moment !== null) {
     if (typeof moment !== 'string') {
@@ -612,7 +592,9 @@ export function day(moment, tz) {
         )
       }
       try {
-        zoned = Temporal.ZonedDateTime.from(moment)
+        // `getAny` again, for the same reason it is used everywhere else: a zoned string can carry
+        // a calendar annotation, and the shim funcApi would drop it under `getISO`.
+        zoned = ZonedFns.fromString(moment, getAny)
       } catch (err) {
         throw new RangeError(
           `daymath: day() could not read ${JSON.stringify(moment)} in the time zone it names`,
@@ -628,7 +610,7 @@ export function day(moment, tz) {
         // year, month or day for a calendar to renumber, and without a zone
         // bracket Temporal will not build anything that does. Refusing it would
         // reject a right answer for a reason that cannot apply.
-        instant = Temporal.Instant.from(moment)
+        instant = InstantFns.fromString(moment)
       } catch {
         // Not a moment, so the string must be a zone — decided by shape, before
         // Temporal sees it. Temporal's zone grammar also accepts a whole
@@ -670,10 +652,10 @@ export function day(moment, tz) {
   // whatever the moment is. A caller mapping rows that are sometimes a Date and
   // sometimes a day string would otherwise see the typo only on some rows.
   //
-  // `ZonedDateTime.from` accepts exactly what `Temporal.Now` accepts and reads
+  // `ZonedDateTime.fromFields` accepts exactly the zone ids `Now` accepts and reads
   // no clock, so a day input stays a pure function.
   try {
-    Temporal.ZonedDateTime.from({ timeZone: zone, year: 1970, month: 1, day: 1 })
+    ZonedFns.fromFields({ timeZone: zone, year: 1970, month: 1, day: 1 })
   } catch (err) {
     throw new RangeError(
       `daymath: day() got an unknown time zone ${JSON.stringify(zone)}`,
@@ -698,17 +680,24 @@ export function day(moment, tz) {
   // The result still goes through `toPlainDate`, so the calendar is adjudicated
   // in one place, and then through `isoOf` for the reason above.
   if (zoned !== undefined) {
-    const plain = guardRange('day', () => zoned.toPlainDate())
+    // `toPlainDate` is re-entered with the STRING, not the record, because daymath's own funnel
+    // takes a day string or a `Temporal.PlainDate`, and an fns record is neither. `PlainDateFns.toString`
+    // writes the same day the class API's `toPlainDate()` produced, annotation and all.
+    const plain = guardRange('day', () =>
+      PlainDateFns.toString(ZonedFns.toPlainDate(zoned)),
+    )
     return toDayString(isoOf(toPlainDate(plain)))
   }
 
   if (instant !== undefined) {
     return guardRange('day', () =>
-      instant.toZonedDateTimeISO(zone).toPlainDate().toString(),
+      PlainDateFns.toString(
+        ZonedFns.toPlainDate(InstantFns.toZonedDateTimeISO(instant, zone)),
+      ),
     )
   }
 
-  if (!isMoment) return Temporal.Now.plainDateISO(zone).toString()
+  if (!isMoment) return PlainDateFns.toString(NowFns.plainDateISO(zone))
 
   // Truncate, because `new Date(n)` truncates, and the contract here is that a
   // number reads exactly as it does. Verified equal on positive and negative
@@ -720,10 +709,11 @@ export function day(moment, tz) {
       ? Math.trunc(moment)
       : /** @type {Date} */ (moment).getTime()
   return guardRange('day', () =>
-    Temporal.Instant.fromEpochMilliseconds(epochMs)
-      .toZonedDateTimeISO(zone)
-      .toPlainDate()
-      .toString(),
+    PlainDateFns.toString(
+      ZonedFns.toPlainDate(
+        InstantFns.toZonedDateTimeISO(InstantFns.fromEpochMilliseconds(epochMs), zone),
+      ),
+    ),
   )
 }
 
@@ -783,7 +773,7 @@ export function format(date, pattern = 'yyyy-MM-dd') {
  */
 export function addDays(date, amount) {
   assertFiniteNumber(amount, 'amount')
-  return addDuration(date, { days: amount }, 'addDays')
+  return addDuration(date, 'days', amount, 'addDays')
 }
 
 /**
@@ -793,7 +783,7 @@ export function addDays(date, amount) {
  */
 export function subDays(date, amount) {
   assertFiniteNumber(amount, 'amount')
-  return addDuration(date, { days: -amount }, 'subDays')
+  return addDuration(date, 'days', -amount, 'subDays')
 }
 
 /**
@@ -805,7 +795,7 @@ export function addWeeks(date, amount) {
   assertFiniteNumber(amount, 'amount')
   const days = amount * 7 // re-check: 7x a finite amount can still reach Infinity
   assertFiniteNumber(days, 'amount')
-  return addDuration(date, { days }, 'addWeeks')
+  return addDuration(date, 'days', days, 'addWeeks')
 }
 
 /**
@@ -817,7 +807,7 @@ export function subWeeks(date, amount) {
   assertFiniteNumber(amount, 'amount')
   const days = -amount * 7
   assertFiniteNumber(days, 'amount')
-  return addDuration(date, { days }, 'subWeeks')
+  return addDuration(date, 'days', days, 'subWeeks')
 }
 
 /**
@@ -828,7 +818,7 @@ export function subWeeks(date, amount) {
  */
 export function addMonths(date, amount) {
   assertFiniteNumber(amount, 'amount')
-  return addDuration(date, { months: amount }, 'addMonths')
+  return addDuration(date, 'months', amount, 'addMonths')
 }
 
 /**
@@ -838,7 +828,7 @@ export function addMonths(date, amount) {
  */
 export function subMonths(date, amount) {
   assertFiniteNumber(amount, 'amount')
-  return addDuration(date, { months: -amount }, 'subMonths')
+  return addDuration(date, 'months', -amount, 'subMonths')
 }
 
 /**
@@ -848,7 +838,7 @@ export function subMonths(date, amount) {
  */
 export function addYears(date, amount) {
   assertFiniteNumber(amount, 'amount')
-  return addDuration(date, { years: amount }, 'addYears')
+  return addDuration(date, 'years', amount, 'addYears')
 }
 
 /**
@@ -858,7 +848,7 @@ export function addYears(date, amount) {
  */
 export function subYears(date, amount) {
   assertFiniteNumber(amount, 'amount')
-  return addDuration(date, { years: -amount }, 'subYears')
+  return addDuration(date, 'years', -amount, 'subYears')
 }
 
 /**
@@ -870,7 +860,7 @@ export function addQuarters(date, amount) {
   assertFiniteNumber(amount, 'amount')
   const months = amount * 3
   assertFiniteNumber(months, 'amount')
-  return addDuration(date, { months }, 'addQuarters')
+  return addDuration(date, 'months', months, 'addQuarters')
 }
 
 /**
@@ -882,7 +872,7 @@ export function subQuarters(date, amount) {
   assertFiniteNumber(amount, 'amount')
   const months = -amount * 3
   assertFiniteNumber(months, 'amount')
-  return addDuration(date, { months }, 'subQuarters')
+  return addDuration(date, 'months', months, 'subQuarters')
 }
 
 // ─── getters / setters (date-fns / Date month & weekday indexing) ─
@@ -915,27 +905,51 @@ export function getDate(date) {
  * @returns {number}
  */
 export function getDay(date) {
-  return toPlainDate(date).dayOfWeek
+  return PlainDateFns.dayOfWeek(toPlainDate(date))
 }
 
 /** @param {DayInput} date @returns {number} */
 export function getDayOfYear(date) {
-  return toPlainDate(date).dayOfYear
+  return PlainDateFns.dayOfYear(toPlainDate(date))
 }
 
 /** @param {DayInput} date @returns {number} */
 export function getDaysInMonth(date) {
-  return toPlainDate(date).daysInMonth
+  return PlainDateFns.daysInMonth(toPlainDate(date))
+}
+
+/**
+ * Quarter of a record daymath already owns.
+ *
+ * The class API needed no such helper, because a `Temporal.PlainDate` passed back into
+ * `toPlainDate` was recognised by `isPlainDate` and survived the round trip. An fns record is not
+ * a `Temporal.PlainDate` and is correctly refused, so every internal caller now works on the
+ * record. That was always the honest shape: re-validating a value daymath just built is waste.
+ * @param {PlainDateRecord} plain
+ * @returns {number}
+ */
+function quarterOf(plain) {
+  return Math.ceil(plain.month / 3)
+}
+
+/**
+ * Calendar month index between two records already normalised to ISO.
+ * @param {PlainDateRecord} left
+ * @param {PlainDateRecord} right
+ * @returns {number}
+ */
+function calendarMonthsBetween(left, right) {
+  return (left.year - right.year) * 12 + (left.month - right.month)
 }
 
 /** Quarter 1…4. @param {DayInput} date @returns {number} */
 export function getQuarter(date) {
-  return Math.ceil(toPlainDate(date).month / 3)
+  return quarterOf(toPlainDate(date))
 }
 
 /** @param {DayInput} date @returns {boolean} */
 export function isLeapYear(date) {
-  return toPlainDate(date).inLeapYear
+  return PlainDateFns.inLeapYear(toPlainDate(date))
 }
 
 /**
@@ -946,7 +960,7 @@ export function isLeapYear(date) {
 export function setYear(date, year) {
   assertFiniteNumber(year, 'year')
   const d = toPlainDate(date)
-  return guardRange('setYear', () => toDayString(d.with({ year })))
+  return guardRange('setYear', () => toDayString(PlainDateFns.withFields(d, { year })))
 }
 
 /**
@@ -960,7 +974,7 @@ export function setMonth(date, month) {
     throw new RangeError('daymath: month must be 1…12 (1=January)')
   }
   const d = toPlainDate(date)
-  return guardRange('setMonth', () => toDayString(d.with({ month })))
+  return guardRange('setMonth', () => toDayString(PlainDateFns.withFields(d, { month })))
 }
 
 /**
@@ -972,7 +986,9 @@ export function setMonth(date, month) {
 export function setDate(date, dayOfMonth) {
   assertFiniteNumber(dayOfMonth, 'day')
   const d = toPlainDate(date)
-  return guardRange('setDate', () => toDayString(d.with({ day: dayOfMonth })))
+  return guardRange('setDate', () =>
+    toDayString(PlainDateFns.withFields(d, { day: dayOfMonth })),
+  )
 }
 
 // ─── start / end of unit ───────────────────────────────────────────
@@ -984,41 +1000,53 @@ export function setDate(date, dayOfMonth) {
 /** @param {DayInput} date @returns {string} */
 export function startOfMonth(date) {
   const d = toPlainDate(date)
-  return guardRange('startOfMonth', () => toDayString(d.with({ day: 1 })))
+  return guardRange('startOfMonth', () =>
+    toDayString(PlainDateFns.withFields(d, { day: 1 })),
+  )
 }
 
 /** @param {DayInput} date @returns {string} */
 export function endOfMonth(date) {
   const d = toPlainDate(date)
-  return guardRange('endOfMonth', () => toDayString(d.with({ day: d.daysInMonth })))
+  return guardRange('endOfMonth', () =>
+    toDayString(PlainDateFns.withFields(d, { day: PlainDateFns.daysInMonth(d) })),
+  )
 }
 
 /** @param {DayInput} date @returns {string} */
 export function startOfYear(date) {
   const d = toPlainDate(date)
-  return guardRange('startOfYear', () => toDayString(d.with({ month: 1, day: 1 })))
+  return guardRange('startOfYear', () =>
+    toDayString(PlainDateFns.withFields(d, { month: 1, day: 1 })),
+  )
 }
 
 /** @param {DayInput} date @returns {string} */
 export function endOfYear(date) {
   const d = toPlainDate(date)
-  return guardRange('endOfYear', () => toDayString(d.with({ month: 12, day: 31 })))
+  return guardRange('endOfYear', () =>
+    toDayString(PlainDateFns.withFields(d, { month: 12, day: 31 })),
+  )
 }
 
 /** @param {DayInput} date @returns {string} */
 export function startOfQuarter(date) {
   const d = toPlainDate(date)
-  const month = (getQuarter(d) - 1) * 3 + 1
-  return guardRange('startOfQuarter', () => toDayString(d.with({ month, day: 1 })))
+  const month = (quarterOf(d) - 1) * 3 + 1
+  return guardRange('startOfQuarter', () =>
+    toDayString(PlainDateFns.withFields(d, { month, day: 1 })),
+  )
 }
 
 /** @param {DayInput} date @returns {string} */
 export function endOfQuarter(date) {
   const d = toPlainDate(date)
-  const month = getQuarter(d) * 3
+  const month = quarterOf(d) * 3
   return guardRange('endOfQuarter', () => {
-    const mid = d.with({ month, day: 1 })
-    return toDayString(mid.with({ day: mid.daysInMonth }))
+    const mid = PlainDateFns.withFields(d, { month, day: 1 })
+    return toDayString(
+      PlainDateFns.withFields(mid, { day: PlainDateFns.daysInMonth(mid) }),
+    )
   })
 }
 
@@ -1030,19 +1058,19 @@ export function endOfQuarter(date) {
 export function startOfWeek(date, options) {
   const d = toPlainDate(date)
   const diff = daysIntoWeek(d, options)
-  return guardRange('startOfWeek', () => toDayString(d.subtract({ days: diff })))
+  return guardRange('startOfWeek', () => toDayString(PlainDateFns.subtractDays(d, diff)))
 }
 
 /**
  * How far the day sits past the start of its week.
- * @param {PlainDate} d
+ * @param {PlainDateRecord} d
  * @param {WeekOptions} [options]
  * @returns {number}
  */
 function daysIntoWeek(d, options) {
   const weekStartsOn = weekStartsOnFrom(options)
   // mod 7 makes weekStartsOn 0 and 7 identical, so both spellings of Sunday work
-  return (d.dayOfWeek - weekStartsOn + 7) % 7
+  return (PlainDateFns.dayOfWeek(d) - weekStartsOn + 7) % 7
 }
 
 /**
@@ -1055,7 +1083,7 @@ export function endOfWeek(date, options) {
   const diff = daysIntoWeek(d, options)
   // one guard for the whole walk, so a failure at either end says endOfWeek
   return guardRange('endOfWeek', () =>
-    toDayString(d.subtract({ days: diff }).add({ days: 6 })),
+    toDayString(PlainDateFns.addDays(PlainDateFns.subtractDays(d, diff), 6)),
   )
 }
 
@@ -1070,7 +1098,26 @@ export function endOfWeek(date, options) {
 export function differenceInDays(dateLeft, dateRight) {
   const left = toPlainDate(dateLeft, 'dateLeft')
   const right = toPlainDate(dateRight, 'dateRight')
-  return isoOf(left).since(isoOf(right), { largestUnit: 'day' }).days
+  // `diff` IS Temporal: it is the `fns` spelling of `PlainDate.prototype.until`, which is what
+  // `since` was here with the operands the other way round. The choice below is between two
+  // Temporal functions, not between Temporal and anything else.
+  //
+  // `diff`, NOT `diffDays`, and the reason is the one day where the two Temporal ranges disagree.
+  //
+  // `PlainDate`'s minimum is `-271821-04-19`, one day BELOW `PlainDateTime`'s, because midnight on
+  // that day is out of bounds while the same day is reachable in a positive-offset zone. The
+  // maximum is not widened, so the asymmetry is real and only the low edge has it. Measured:
+  // `PlainDate.from('-271821-04-19').toPlainDateTime()` throws `Out-of-bounds date`, and
+  // `-271821-04-20` does not.
+  //
+  // `diffDays` converts to a `PlainDateTime` and inherits that, so it throws on exactly one
+  // operand. `diff` with `largestUnit: 'day'` does not, and answers what the class API's `since`
+  // answered. The cross-runtime baseline caught it, because no test in the suite covers a pair
+  // that wide; `differenceInDays` and `differenceInWeeks` both went red.
+  //
+  // The argument order is `(record, other)` for `other − record`, so the operands are swapped to
+  // keep daymath's date-fns order of `dateLeft − dateRight`.
+  return PlainDateFns.diff(isoOf(right), isoOf(left), { largestUnit: 'day' }).days
 }
 
 /**
@@ -1105,16 +1152,16 @@ export function differenceInMonths(dateLeft, dateRight) {
   // 29-day gap, and two days 543 ISO years apart measured 0.
   const left = isoOf(toPlainDate(dateLeft, 'dateLeft'))
   const right = isoOf(toPlainDate(dateRight, 'dateRight'))
-  const sign = Temporal.PlainDate.compare(left, right)
+  const sign = PlainDateFns.compare(left, right)
   if (sign === 0) return 0
-  const diff = Math.abs(differenceInCalendarMonths(left, right))
+  const diff = Math.abs(calendarMonthsBetween(left, right))
   if (diff < 1) return 0
   const [earlier, later] = sign > 0 ? [right, left] : [left, right]
   // Where `earlier` lands after `diff` months: same year-month as `later` by
   // construction, on `earlier`'s day clamped to that month's length. Compared
   // as day numbers rather than built as a date, because the landing can sit
   // past the maximum PlainDate even when both operands are inside the range.
-  const landingDay = Math.min(earlier.day, later.daysInMonth)
+  const landingDay = Math.min(earlier.day, PlainDateFns.daysInMonth(later))
   const isLastMonthNotFull = landingDay > later.day
   return sign * (diff - +isLastMonthNotFull) || 0
 }
@@ -1128,7 +1175,7 @@ export function differenceInMonths(dateLeft, dateRight) {
 export function differenceInCalendarMonths(dateLeft, dateRight) {
   const left = isoOf(toPlainDate(dateLeft, 'dateLeft'))
   const right = isoOf(toPlainDate(dateRight, 'dateRight'))
-  return (left.year - right.year) * 12 + (left.month - right.month)
+  return calendarMonthsBetween(left, right)
 }
 
 /**
@@ -1145,7 +1192,7 @@ export function differenceInYears(dateLeft, dateRight) {
   // `isoOf` on both: a measurement, so it ignores the year LABEL. See differenceInMonths.
   const left = isoOf(toPlainDate(dateLeft, 'dateLeft'))
   const right = isoOf(toPlainDate(dateRight, 'dateRight'))
-  const sign = Temporal.PlainDate.compare(left, right)
+  const sign = PlainDateFns.compare(left, right)
   if (sign === 0) return 0
   const diff = Math.abs(left.year - right.year)
   if (diff < 1) return 0
@@ -1156,7 +1203,9 @@ export function differenceInYears(dateLeft, dateRight) {
   // Compared field by field rather than built as a date, because the landing
   // can sit past the maximum PlainDate even with both operands inside the range.
   const landingDay =
-    earlier.month === 2 && earlier.day === 29 && !later.inLeapYear ? 28 : earlier.day
+    earlier.month === 2 && earlier.day === 29 && !PlainDateFns.inLeapYear(later)
+      ? 28
+      : earlier.day
   const isLastYearNotFull =
     earlier.month > later.month ||
     (earlier.month === later.month && landingDay > later.day)
@@ -1199,7 +1248,7 @@ export function differenceInQuarters(dateLeft, dateRight) {
 export function differenceInCalendarQuarters(dateLeft, dateRight) {
   const left = isoOf(toPlainDate(dateLeft, 'dateLeft'))
   const right = isoOf(toPlainDate(dateRight, 'dateRight'))
-  return (left.year - right.year) * 4 + (getQuarter(left) - getQuarter(right))
+  return (left.year - right.year) * 4 + (quarterOf(left) - quarterOf(right))
 }
 
 // ─── compare / equal ───────────────────────────────────────────────
@@ -1211,10 +1260,8 @@ export function differenceInCalendarQuarters(dateLeft, dateRight) {
  */
 export function isBefore(date, dateToCompare) {
   return (
-    Temporal.PlainDate.compare(
-      toPlainDate(date),
-      toPlainDate(dateToCompare, 'dateToCompare'),
-    ) < 0
+    PlainDateFns.compare(toPlainDate(date), toPlainDate(dateToCompare, 'dateToCompare')) <
+    0
   )
 }
 
@@ -1225,10 +1272,8 @@ export function isBefore(date, dateToCompare) {
  */
 export function isAfter(date, dateToCompare) {
   return (
-    Temporal.PlainDate.compare(
-      toPlainDate(date),
-      toPlainDate(dateToCompare, 'dateToCompare'),
-    ) > 0
+    PlainDateFns.compare(toPlainDate(date), toPlainDate(dateToCompare, 'dateToCompare')) >
+    0
   )
 }
 
@@ -1240,7 +1285,7 @@ export function isAfter(date, dateToCompare) {
  */
 export function isEqual(dateLeft, dateRight) {
   return (
-    Temporal.PlainDate.compare(
+    PlainDateFns.compare(
       toPlainDate(dateLeft, 'dateLeft'),
       toPlainDate(dateRight, 'dateRight'),
     ) === 0
@@ -1265,9 +1310,9 @@ export function isSameWeek(dateLeft, dateRight, options) {
   return guardRange(
     'isSameWeek',
     () =>
-      Temporal.PlainDate.compare(
-        left.subtract({ days: daysIntoWeek(left, options) }),
-        right.subtract({ days: daysIntoWeek(right, options) }),
+      PlainDateFns.compare(
+        PlainDateFns.subtractDays(left, daysIntoWeek(left, options)),
+        PlainDateFns.subtractDays(right, daysIntoWeek(right, options)),
       ) === 0,
   )
 }
@@ -1305,7 +1350,7 @@ export function isSameYear(dateLeft, dateRight) {
 export function isSameQuarter(dateLeft, dateRight) {
   const a = isoOf(toPlainDate(dateLeft, 'dateLeft'))
   const b = isoOf(toPlainDate(dateRight, 'dateRight'))
-  return a.year === b.year && getQuarter(a) === getQuarter(b)
+  return a.year === b.year && quarterOf(a) === quarterOf(b)
 }
 
 /**
@@ -1315,7 +1360,7 @@ export function isSameQuarter(dateLeft, dateRight) {
  */
 export function compareAsc(dateLeft, dateRight) {
   return /** @type {-1 | 0 | 1} */ (
-    Temporal.PlainDate.compare(
+    PlainDateFns.compare(
       toPlainDate(dateLeft, 'dateLeft'),
       toPlainDate(dateRight, 'dateRight'),
     )
@@ -1341,7 +1386,7 @@ export function min(dates) {
   return toDayString(
     dates
       .map((d) => toPlainDate(d))
-      .reduce((a, b) => (Temporal.PlainDate.compare(a, b) <= 0 ? a : b)),
+      .reduce((a, b) => (PlainDateFns.compare(a, b) <= 0 ? a : b)),
   )
 }
 
@@ -1354,7 +1399,7 @@ export function max(dates) {
   return toDayString(
     dates
       .map((d) => toPlainDate(d))
-      .reduce((a, b) => (Temporal.PlainDate.compare(a, b) >= 0 ? a : b)),
+      .reduce((a, b) => (PlainDateFns.compare(a, b) >= 0 ? a : b)),
   )
 }
 
@@ -1402,7 +1447,7 @@ export function isFirstDayOfMonth(date) {
 /** @param {DayInput} date @returns {boolean} */
 export function isLastDayOfMonth(date) {
   const d = toPlainDate(date)
-  return d.day === d.daysInMonth
+  return d.day === PlainDateFns.daysInMonth(d)
 }
 
 // ─── intervals ─────────────────────────────────────────────────────
@@ -1414,7 +1459,7 @@ export function isLastDayOfMonth(date) {
  */
 export function eachDayOfInterval(interval) {
   const { start, end } = toInterval(interval)
-  if (Temporal.PlainDate.compare(start, end) > 0) {
+  if (PlainDateFns.compare(start, end) > 0) {
     throw new RangeError('daymath: interval start must not be after end')
   }
   /** @type {string[]} */
@@ -1424,8 +1469,8 @@ export function eachDayOfInterval(interval) {
   // PlainDate (+275760-09-13) throws
   for (;;) {
     out.push(toDayString(cur))
-    if (Temporal.PlainDate.compare(cur, end) >= 0) break
-    cur = cur.add({ days: 1 })
+    if (PlainDateFns.compare(cur, end) >= 0) break
+    cur = PlainDateFns.addDays(cur, 1)
   }
   return out
 }
@@ -1437,22 +1482,22 @@ export function eachDayOfInterval(interval) {
  */
 export function eachMonthOfInterval(interval) {
   const { start, end } = toInterval(interval)
-  if (Temporal.PlainDate.compare(start, end) > 0) {
+  if (PlainDateFns.compare(start, end) > 0) {
     throw new RangeError('daymath: interval start must not be after end')
   }
   /** @type {string[]} */
   const out = []
   // the 1st of start's month can sit below the minimum PlainDate
   const [cur0, last] = guardRange('eachMonthOfInterval', () => [
-    start.with({ day: 1 }),
-    end.with({ day: 1 }),
+    PlainDateFns.withFields(start, { day: 1 }),
+    PlainDateFns.withFields(end, { day: 1 }),
   ])
   let cur = cur0
   // same boundary rule as eachDayOfInterval
   for (;;) {
     out.push(toDayString(cur))
-    if (Temporal.PlainDate.compare(cur, last) >= 0) break
-    cur = cur.add({ months: 1 })
+    if (PlainDateFns.compare(cur, last) >= 0) break
+    cur = PlainDateFns.addMonths(cur, 1)
   }
   return out
 }
@@ -1464,7 +1509,7 @@ export function eachMonthOfInterval(interval) {
  */
 export function eachYearOfInterval(interval) {
   const { start, end } = toInterval(interval)
-  if (Temporal.PlainDate.compare(start, end) > 0) {
+  if (PlainDateFns.compare(start, end) > 0) {
     throw new RangeError('daymath: interval start must not be after end')
   }
   /** @type {string[]} */
@@ -1476,11 +1521,11 @@ export function eachYearOfInterval(interval) {
     // Compare ISO years, then add. Testing the loop condition AFTER the push is what keeps the
     // top edge working: Jan 1 of +275760 is valid, and adding a year to it is not.
     const lastIsoYear = isoOf(end).year
-    let cur = start.with({ month: 1, day: 1 })
+    let cur = PlainDateFns.withFields(start, { month: 1, day: 1 })
     for (;;) {
       out.push(toDayString(cur))
       if (isoOf(cur).year >= lastIsoYear) break
-      cur = cur.add({ years: 1 })
+      cur = PlainDateFns.addYears(cur, 1)
     }
   })
   return out
@@ -1495,12 +1540,10 @@ export function eachYearOfInterval(interval) {
 export function isWithinInterval(date, interval) {
   const d = toPlainDate(date)
   const { start, end } = toInterval(interval)
-  if (Temporal.PlainDate.compare(start, end) > 0) {
+  if (PlainDateFns.compare(start, end) > 0) {
     throw new RangeError('daymath: interval start must not be after end')
   }
-  return (
-    Temporal.PlainDate.compare(d, start) >= 0 && Temporal.PlainDate.compare(d, end) <= 0
-  )
+  return PlainDateFns.compare(d, start) >= 0 && PlainDateFns.compare(d, end) <= 0
 }
 
 /**
@@ -1512,11 +1555,11 @@ export function isWithinInterval(date, interval) {
 export function clamp(date, interval) {
   const d = toPlainDate(date)
   const { start, end } = toInterval(interval)
-  if (Temporal.PlainDate.compare(start, end) > 0) {
+  if (PlainDateFns.compare(start, end) > 0) {
     throw new RangeError('daymath: interval start must not be after end')
   }
-  if (Temporal.PlainDate.compare(d, start) < 0) return toDayString(start)
-  if (Temporal.PlainDate.compare(d, end) > 0) return toDayString(end)
+  if (PlainDateFns.compare(d, start) < 0) return toDayString(start)
+  if (PlainDateFns.compare(d, end) > 0) return toDayString(end)
   return toDayString(d)
 }
 
@@ -1530,22 +1573,21 @@ export function clamp(date, interval) {
 export function areIntervalsOverlapping(intervalLeft, intervalRight, options) {
   const a = toInterval(intervalLeft)
   const b = toInterval(intervalRight)
-  if (Temporal.PlainDate.compare(a.start, a.end) > 0) {
+  if (PlainDateFns.compare(a.start, a.end) > 0) {
     throw new RangeError('daymath: intervalLeft start must not be after end')
   }
-  if (Temporal.PlainDate.compare(b.start, b.end) > 0) {
+  if (PlainDateFns.compare(b.start, b.end) > 0) {
     throw new RangeError('daymath: intervalRight start must not be after end')
   }
   const inclusive = options?.inclusive ?? false
   if (inclusive) {
     return (
-      Temporal.PlainDate.compare(a.start, b.end) <= 0 &&
-      Temporal.PlainDate.compare(b.start, a.end) <= 0
+      PlainDateFns.compare(a.start, b.end) <= 0 &&
+      PlainDateFns.compare(b.start, a.end) <= 0
     )
   }
   // date-fns default: touch-at-endpoint is NOT overlap
   return (
-    Temporal.PlainDate.compare(a.start, b.end) < 0 &&
-    Temporal.PlainDate.compare(b.start, a.end) < 0
+    PlainDateFns.compare(a.start, b.end) < 0 && PlainDateFns.compare(b.start, a.end) < 0
   )
 }
