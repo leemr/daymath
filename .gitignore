@@ -1,8 +1,6 @@
 node_modules/
 *.tgz
 .npmrc
-todo
-todo.*
 *.swp
 coverage/
 deno.lock
