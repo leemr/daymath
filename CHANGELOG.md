@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **The "definitely not native" test fixture moves to `temporal-polyfill/full/implementation`, because `/full` stopped being one.** [fullcalendar/temporal-polyfill#102](https://github.com/fullcalendar/temporal-polyfill/pull/102) landed in 1.0.4 and made `/full` defer to native Temporal — the fix daymath reported at `[0.5.0]` below. It also removes the exact property two harnesses imported `/full` for: being a class that is guaranteed *not* to be the base entry. Measured on Deno 2.9.5 with native Temporal: `/full === globalThis.Temporal` was false in 1.0.3 and is true in 1.0.4, and `full === full/implementation` went from true to false. `/full/implementation` is forced non-native in both versions, so the fixture no longer depends on which one resolves. Nothing shipped moves — `index.js` imports `temporal-polyfill/fns` and dropped its own `/full` import at 0.6.0 — and the size baseline is unchanged.
+- **Neither harness went quietly green, which is what the controls are for.** `test.js` asserts `notEqual(OTHER, Temporal.PlainDate)` before it trusts the foreign class, and `scripts/cross-runtime.mjs` refuses to report a selection when native and bundled word the same failure identically. On 1.0.4 the first turns red on every native lane and the second reports that it has gone blind, so the bump could not have silently hollowed out either check.
+- **The base entry's probe objects are now asserted too, because that was the same gap one line below.** `scripts/cross-runtime.mjs` hands `run()` a `Temporal.PlainDate` from the BASE entry and a comment claimed those are genuine native objects on a native runtime. Nothing checked it — the identical omission that let `/full` become the base entry unnoticed. If the base entry ever stops deferring, the probes turn into bundled objects and **no hash moves**, because daymath reduces every `PlainDate` to the same ISO string, so the lane would pass with the native probe gone. Measured before adding it: the new predicate is false on Deno 2.9.5 and on Node 26, and `globalIsCapable` short-circuits it on every non-native lane, so it fires nowhere today.
+- The declared floor stays `^1.0.3`. daymath needs neither the fix nor the release: `fns` already deferred correctly in 1.0.3, and the repaired fixture works on both. The lockfile moves to 1.0.4, so CI tests against it.
+
 ## [0.6.0] — 2026-08-09
 
 ### Changed
