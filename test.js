@@ -3,8 +3,9 @@ import { spawnSync } from 'node:child_process'
 import { describe, it } from 'node:test'
 import { Temporal } from 'temporal-polyfill'
 // A second, genuinely distinct Temporal implementation. Used to prove daymath
-// accepts a PlainDate it did not build itself.
-import { Temporal as Other } from 'temporal-polyfill/full'
+// accepts a PlainDate it did not build itself. `/full/implementation` and not
+// `/full`, which defers to native from 1.0.4 and hands back the base entry's object.
+import { Temporal as Other } from 'temporal-polyfill/full/implementation'
 // namespace import too, so the -0 sweep enumerates the module instead of a list
 import * as dm from './index.js'
 
@@ -491,9 +492,11 @@ describe('parse / format / isValid', () => {
 })
 
 describe('a PlainDate from another Temporal implementation', () => {
-  // `temporal-polyfill/full` is a genuinely separate class from the base entry,
-  // so it stands in for native Temporal or a second copy of the polyfill in one
-  // dependency tree. No extra dependency, and no faking globalThis.
+  // `temporal-polyfill/full/implementation` is a genuinely separate class from the
+  // base entry, so it stands in for native Temporal or a second copy of the polyfill
+  // in one dependency tree. No extra dependency, and no faking globalThis. It is the
+  // FORCED non-native entry, which is the property this needs — `/full` gave that up
+  // in 1.0.4, and the control below is what catches a fixture that stopped being one.
   const OTHER = Other.PlainDate
   const iso = '2026-01-31'
   const foreign = OTHER.from(iso)

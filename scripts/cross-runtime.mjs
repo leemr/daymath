@@ -23,7 +23,7 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { Temporal } from 'temporal-polyfill'
-import { Temporal as bundledTemporal } from 'temporal-polyfill/full'
+import { Temporal as bundledTemporal } from 'temporal-polyfill/full/implementation'
 import * as dm from '../index.js'
 import { hash, run } from './battery.mjs'
 
@@ -45,8 +45,10 @@ const temporal = globalThis.Temporal ? 'native Temporal' : 'temporal-polyfill'
 //
 // The banner above says what the RUNTIME has. It says nothing about what daymath ended up running,
 // and that gap is exactly how a defect shipped: `index.js` was switched to `temporal-polyfill/full`,
-// whose entry does no native selection, so daymath ran the bundled polyfill on Node 26 and Deno
-// while this banner still read "native Temporal". Nothing failed. It was found by hand.
+// whose entry did no native selection then, so daymath ran the bundled polyfill on Node 26 and Deno
+// while this banner still read "native Temporal". Nothing failed. It was found by hand. Upstream
+// fixed that entry in 1.0.4 (fullcalendar/temporal-polyfill#102), so the bundled side below imports
+// `/full/implementation` — the entry that is still forced non-native, on 1.0.3 and 1.0.4 alike.
 //
 // So assert it, on every lane.
 //
@@ -143,6 +145,19 @@ if (causeMessage === null) {
         ` (cause ${JSON.stringify(causeMessage)}, bundled says ${JSON.stringify(bundledMessage)})`,
     )
   }
+}
+
+// A SECOND fixture claim, and it guards the probes below rather than the selection above. `run()`
+// is handed `Temporal.PlainDate` from the BASE entry, and the comment at that call site says those
+// are genuine native objects where the runtime has native Temporal. Nothing asserted it — the same
+// omission that let `/full` quietly become the base entry until 1.0.4 fixed it. If the base entry
+// ever stops deferring, the probes turn into bundled objects and NO hash moves, because daymath
+// reduces every PlainDate to the same ISO string. The lane would pass with the native probe gone.
+if (globalIsCapable && Temporal !== globalThis.Temporal) {
+  selectionErrors.push(
+    'the base `temporal-polyfill` entry no longer hands back native Temporal,' +
+      ' so the PlainDate probes below are not native objects any more',
+  )
 }
 
 // Joined on NUL, which cannot occur in a result. A space could: error
