@@ -18,7 +18,12 @@
 //
 // A line whose comment is prose rather than a literal is SKIPPED and counted, not silently
 // dropped: `day()` reads a clock and `day(row.createdAt)` names a variable no probe has, so
-// neither can be asserted. The skip count is printed so a shrinking assertion set is visible.
+// neither can be asserted. Every `@example` therefore lands in exactly one of three buckets —
+// asserted, skipped with a printed reason, or unaccounted — and unaccounted is a failure.
+//
+// `FLOOR` is the last guard, and it is the one that matters most: without it a broken collector
+// or a renamed file reports PASS over zero examples and exits 0, which is this gate quietly
+// disarming itself. All four behaviours are proved by planting, not assumed.
 //
 //   node scripts/examples.mjs
 import { readFileSync } from 'node:fs'
@@ -46,12 +51,13 @@ function collect(file) {
     const next = /^\s*\*\s*(\/\/.*)$/u.exec(lines[i + 1] ?? '')
     if (next !== null && !body.includes('//')) body = `${body} ${next[1]}`
     const cut = body.lastIndexOf('//')
-    if (cut === -1) continue
+    // An example with no `//` answer is REPORTED, not dropped. Skipping it here would put it in
+    // no bucket at all, which is the one outcome this script must never produce.
     found.push({
       file,
       line: i + 1,
-      expr: body.slice(0, cut).trim(),
-      expected: body.slice(cut + 2).trim(),
+      expr: (cut === -1 ? body : body.slice(0, cut)).trim(),
+      expected: cut === -1 ? null : body.slice(cut + 2).trim(),
     })
   }
   return found
@@ -60,36 +66,62 @@ function collect(file) {
 /**
  * Is the stated answer a literal this script can compare against, or prose?
  * Prose is a legitimate answer for `day()`, which reads a clock.
+ *
+ * Called on the output of `literalOf`, never on the raw comment, so the trailing-prose case is
+ * already stripped and the whole string can be matched.
  * @param {string} expected
  */
 function assertable(expected) {
-  if (/^throws\s+(\w*Error)/u.test(expected)) return true
+  if (/^throws\s+\w*Error/u.test(expected)) return true
   return /^(['[{]|-?\d|true$|false$)/u.test(expected)
 }
 
-/** The literal part of the comment, before any trailing prose after two spaces or an em dash. */
+/**
+ * The literal part of the comment, before any trailing prose.
+ *
+ * Two spaces or an em dash separate a literal from a note. A bare word after ONE space counts too,
+ * so `// true same day` still asserts: a boolean or `null` reaches the end of its own literal at
+ * the first space, and treating that as prose would silently drop an assertable example.
+ * @param {string} expected
+ */
 function literalOf(expected) {
-  return expected.split(/\s{2,}|\s+—\s+/u)[0].trim()
+  const head = expected.split(/\s{2,}|\s+—\s+/u)[0].trim()
+  return /^(true|false|null|undefined|NaN)\b/u.exec(head)?.[1] ?? head
 }
+
+// A FLOOR, because a gate that can quietly find nothing is not a gate. Rename a file, reflow a
+// comment, or break the regex, and without this the run reports PASS over zero examples and exits
+// 0. The number only has to move when examples are deliberately added or removed.
+const FLOOR = 40
 
 let asserted = 0
 const skipped = []
 const failures = []
+/** `@example` lines seen but placed in no bucket. Must stay zero, or the accounting has a hole. */
+let unaccounted = 0
 
 for (const file of FILES) {
   for (const ex of collect(file)) {
     const where = `${ex.file}:${ex.line}`
-    // literalOf first, so trailing prose after a literal does not hide the literal. Skipping an
-    // example that COULD be asserted is the failure mode this script exists to prevent.
-    if (!assertable(literalOf(ex.expected))) {
-      skipped.push(`${where}  ${ex.expr}  // ${ex.expected}  [prose, not a literal]`)
+    if (ex.expected === null) {
+      unaccounted++
+      failures.push(
+        `${where}  ${ex.expr}\n    has no // answer, so nothing can be checked`,
+      )
       continue
     }
-    // An example may name a caller's own variable — `day(row.createdAt)` is illustrative and
-    // there is no `row` to bind. That is not assertable, and it is not a failure either. Caught
-    // as a distinct class rather than folded into the answer comparison, so it stays visible.
+    // The caller-variable test runs FIRST, so the skip reason names the real cause. Ordered the
+    // other way it is unreachable, because every such example happens to carry prose today — and
+    // it would then mis-report the day a literal one is written.
     if (/\b(row|zdt)\b/u.test(ex.expr)) {
       skipped.push(`${where}  ${ex.expr}  // ${ex.expected}  [needs a caller variable]`)
+      continue
+    }
+    // literalOf before assertable, so trailing prose after a literal does not hide the literal.
+    // Skipping an example that COULD be asserted is the failure mode this script exists to
+    // prevent, so the split accepts ONE space before prose as well as two.
+    if (!assertable(literalOf(ex.expected))) {
+      skipped.push(`${where}  ${ex.expr}  // ${ex.expected}  [prose, not a literal]`)
       continue
     }
     const thrown = /^throws\s+(\w*Error)/u.exec(ex.expected)
@@ -138,8 +170,18 @@ for (const file of FILES) {
   }
 }
 
-console.log(`daymath examples — ${asserted} asserted, ${skipped.length} not assertable\n`)
+console.log(
+  `daymath examples — ${asserted} asserted, ${skipped.length} not assertable, ${unaccounted} unaccounted\n`,
+)
 for (const s of skipped) console.log(`  skip  ${s}`)
+
+if (asserted < FLOOR) {
+  failures.push(
+    `only ${asserted} examples were asserted, and the floor is ${FLOOR}\n` +
+      `    Either examples were removed on purpose — then lower FLOOR in this file — or the\n` +
+      `    collector stopped finding them, which is this gate silently disarming itself.`,
+  )
+}
 
 if (failures.length > 0) {
   console.error(

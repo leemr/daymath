@@ -233,8 +233,9 @@ export function differenceInCalendarQuarters(
 export function isBefore(date: DayInput, dateToCompare: DayInput): boolean
 export function isAfter(date: DayInput, dateToCompare: DayInput): boolean
 /**
- * Same calendar day. Measurement normalizes, so a mixed-calendar pair answers
- * instead of throwing `Mismatched calendars` the way Temporal's own `equals` does.
+ * Same calendar day, and the calendar label is ignored. Temporal's own `equals`
+ * compares the calendar too, so it answers `false` for one day written two ways;
+ * daymath compares the day alone and answers `true`.
  * @example isEqual('2026-01-31[u-ca=buddhist]', '2026-01-31') // true  same day
  */
 export function isEqual(dateLeft: DayInput, dateRight: DayInput): boolean
