@@ -20,9 +20,8 @@ start until that call is answered.
 | 3 | **Business days** | add/sub/diff/is, with a caller-owned closed-day hook | — | minor |
 | 4 | **Markdown lint** | `markdownlint-cli2` as a gate, so a prose defect stops being invisible | — | no release |
 | 5 | **npm provenance** | publish from Actions with OIDC instead of a laptop token | — | mechanics |
-| 6 | **JSDoc examples** | deeper `@example` on the hot exports | — | patch |
-| 7 | **Awesome-list** | submit to an existing awesome list | a stable API | external |
-| 8 | **Prose sweep for 1.0** | move supporting narrative out of this file and the source headers into `todo.claude` | — | no release |
+| 6 | **Awesome-list** | submit to an existing awesome list | a stable API | external |
+| 7 | **Prose sweep for 1.0** | move supporting narrative out of this file and the source headers into `todo.claude` | — | no release |
 
 **SQL DATETIME is done and is off this list.** It was row 2. It sits under `[Unreleased]` in
 `CHANGELOG.md` until the release commit stamps the version, and `CHANGELOG.md` is the only place
@@ -42,6 +41,11 @@ The `format` script excludes `*.md` on purpose. Adding them to that glob costs n
 would immediately reflow all five — pad every table column and insert blank lines between adjacent
 headings. Use a linter, which reports; never a formatter, which rewrites.
 
+**JSDoc examples are done and off this list.** It was row 6, and the row understated it:
+`index.d.ts` held ZERO `@example` blocks, and it is the only file an editor reads for docs.
+Twenty-one declarations now carry them, and `npm run test:examples` executes every one and asserts
+its answer, so the class cannot rot silently again.
+
 **Row 1 is not free of a release, and the old label saying so was wrong.** `README.md` is one of the
 five files in the npm tarball, so repointing the badge markup leaves npmjs serving the old badge
 until the next publish. The badge itself works on GitHub immediately. Nothing blocks the row; it
@@ -57,7 +61,7 @@ additive and reverse no documented promise. Accepting `YYYY-Www-D` as INPUT is a
 it lands in `bareDay`, so it widens all 69 exports at once, exactly as SQL DATETIME did. The
 additive half is the cheaper, safer start.
 
-**Row 8, noted 2026-08-09.** This file and several source headers carry the REASONING behind a
+**Row 7, noted 2026-08-09.** This file and several source headers carry the REASONING behind a
 decision as well as the decision. The reasoning belongs in the local `todo.claude`, which is the
 deep record; this file should carry what remains to do and the one-line cost of each. Do it in one
 deliberate pass at 1.0, not opportunistically, or the record gets split with no rule to find it by.
@@ -269,10 +273,10 @@ calendar surface is documented in `README.md`; the measurement is in `CHANGELOG.
 
 ## DX (optional)
 
-- Deeper `@example` JSDoc on hot exports  
 - Micro-bench only if honest and useful  
 
-**Done:** `examples/basic.mjs`, types, playground, 100% coverage, lint + format + type gates  
+**Done:** `examples/basic.mjs`, types, playground, 100% coverage, lint + format + type gates, and
+`@example` on 21 declarations with a gate that executes them  
 
 ---
 

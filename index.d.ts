@@ -170,8 +170,10 @@ export function getQuarter(date: DayInput): number
 export function isLeapYear(date: DayInput): boolean
 
 /**
- * Overflow clamps, so 29 February survives a move to a common year.
- * @example setYear('2024-02-29', 2026) // '2026-02-28'  clamped
+ * Overflow clamps, so 29 February survives a move to a common year. **date-fns rolls here
+ * instead**, so this is the second deliberate disagreement after `setDate` — and the one a caller
+ * reaches by accident, through a stored 29 February.
+ * @example setYear('2024-02-29', 2026) // '2026-02-28'  clamped; date-fns gives '2026-03-01'
  */
 export function setYear(date: DayInput, year: number): string
 /**

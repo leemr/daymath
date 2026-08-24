@@ -79,20 +79,23 @@ function assertable(expected) {
 /**
  * The literal part of the comment, before any trailing prose.
  *
- * Two spaces or an em dash separate a literal from a note. A bare word after ONE space counts too,
- * so `// true same day` still asserts: a boolean or `null` reaches the end of its own literal at
- * the first space, and treating that as prose would silently drop an assertable example.
+ * Two spaces or an em dash separate a literal from a note, and that is the ONLY split. A boolean
+ * gets one extra step, because `true` and `false` end at their own first space: `// true same day`
+ * still asserts, where treating it as prose would silently drop a checkable example. Nothing else
+ * is extracted that way — an array literal contains spaces, so cutting at the first one would
+ * truncate it. A number or string written with one space before its note therefore fails LOUDLY,
+ * which is the safe direction: `assertable` only ever sees the head of the literal.
  * @param {string} expected
  */
 function literalOf(expected) {
   const head = expected.split(/\s{2,}|\s+—\s+/u)[0].trim()
-  return /^(true|false|null|undefined|NaN)\b/u.exec(head)?.[1] ?? head
+  return /^(true|false)\b/u.exec(head)?.[1] ?? head
 }
 
 // A FLOOR, because a gate that can quietly find nothing is not a gate. Rename a file, reflow a
 // comment, or break the regex, and without this the run reports PASS over zero examples and exits
 // 0. The number only has to move when examples are deliberately added or removed.
-const FLOOR = 40
+const FLOOR = 41
 
 let asserted = 0
 const skipped = []
@@ -119,7 +122,7 @@ for (const file of FILES) {
     }
     // literalOf before assertable, so trailing prose after a literal does not hide the literal.
     // Skipping an example that COULD be asserted is the failure mode this script exists to
-    // prevent, so the split accepts ONE space before prose as well as two.
+    // prevent. The rules for what counts as the literal are on `literalOf`.
     if (!assertable(literalOf(ex.expected))) {
       skipped.push(`${where}  ${ex.expr}  // ${ex.expected}  [prose, not a literal]`)
       continue
