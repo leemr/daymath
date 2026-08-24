@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`index.d.ts` now carries `@example` blocks, and it had none at all.** Measured before starting: zero examples across 69 declarations, while `index.js` had ten and every one was inside the `day()` block. `package.json` declares exactly one types path — `"types": "./index.d.ts"`, repeated in the `exports` map — so a TypeScript editor resolves documentation from the `.d.ts` and never parses `index.js`. **Every example daymath had was invisible on hover**, which is where a typed caller reads. Fourteen declarations gain examples, chosen by where daymath *surprises* a date-fns user rather than by call frequency: `getMonth` is 1-12, `getDay` is 1=Monday…7=Sunday, `addMonths`/`setMonth`/`setDate`/`setYear` clamp instead of rolling, `startOfWeek` defaults to Sunday, `differenceInMonths` counts by `addMonths`, `min` takes an array, and the interval helpers are inclusive at both ends. `format` and `isValid` show what they refuse.
+- **`npm run test:examples` executes every `@example` and asserts its stated answer.** 41 asserted, 11 correctly not assertable. It is a new gate for a real blind spot: `tsc` type-checks the declarations and ignores the comments, the differential harness compares daymath to date-fns and never opens a JSDoc block, and the cross-runtime battery enumerates exports rather than documentation. So an example could go stale on any behaviour change with every gate still green — and the example is the line a caller copies. Proved to block by planting a wrong answer: exit 1, naming the file, line, expected and actual.
+
+### Fixed
+
+- **Three `day()` examples in `index.js` had silently rotted, and the new gate caught them on its first run.** They claimed `day()` was `'2026-08-08'`, `day('Asia/Tokyo')` was `'2026-08-09'` and `addDays(day(), 2)` was `'2026-08-10'` — all true the day they were written and none true afterwards, because `day()` reads a clock. A literal that depends on today's date can only rot, so those three now read as prose. No behaviour changed; the documentation stopped lying.
+
 ## [0.7.0] — 2026-08-23
 
 ### Added

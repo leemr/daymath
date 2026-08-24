@@ -80,6 +80,12 @@ export type WeekOptions = {
  *
  * A calendar that renumbers months or days is still refused where it is
  * applied, which means with a `[Zone]` bracket and on a day string.
+ * @example day()                          // today, UTC
+ * @example day('Asia/Tokyo')              // today in Tokyo
+ * @example day(row.createdAt)             // a Date, read in UTC
+ * @example day(row.createdAt, 'Asia/Tokyo') // the same instant, Tokyo's day
+ * @example day('1999-01-01T00:00:00Z')    // '1999-01-01'
+ * @example day('2026-08-08 12:00:00')     // '2026-08-08'  a SQLite DATETIME
  */
 export function day(tz?: string): string
 export function day(
@@ -90,19 +96,50 @@ export function day(
 /**
  * True for a valid daymath day string / PlainDate.
  * Invalid strings → false. `Date` → throws TypeError (not a quiet false).
+ * @example isValid('2026-08-08')       // true
+ * @example isValid('2026-02-30')       // false
+ * @example isValid('2026-08-08 12:00:00') // true   clock dropped
+ * @example isValid(new Date())         // throws TypeError, not false
  */
 export function isValid(value: unknown): boolean
 
-/** Validate / normalize to ISO 8601 day string (Temporal `toString` form). */
+/**
+ * Validate / normalize to ISO 8601 day string (Temporal `toString` form).
+ *
+ * `parse` preserves what it is given; `day()` normalizes. So a calendar
+ * annotation survives here and is dropped by `day()`.
+ * @example parse('2026-08-08')                // '2026-08-08'
+ * @example parse('2026-08-08 12:00:00')       // '2026-08-08'  clock dropped
+ * @example parse('2026-01-31[u-ca=buddhist]') // '2026-01-31[u-ca=buddhist]'
+ * @example parse('2026-02-30')                // throws RangeError
+ */
 export function parse(date: DayInput): string
 
-/** Format as ISO day (only `yyyy-MM-dd` / `YYYY-MM-DD` patterns supported). */
+/**
+ * Format as ISO day (only `yyyy-MM-dd` / `YYYY-MM-DD` patterns supported).
+ *
+ * Not locale display. For that, use `Intl` or a date-fns formatter.
+ * @example format('2026-08-08')               // '2026-08-08'
+ * @example format('2026-08-08', 'dd/MM/yyyy') // throws RangeError
+ */
 export function format(date: DayInput, pattern?: 'yyyy-MM-dd' | 'YYYY-MM-DD'): string
 
+/**
+ * @example addDays('2026-08-08', 30) // '2026-09-07'
+ * @example addDays('2026-08-08', -1) // '2026-08-07'
+ */
 export function addDays(date: DayInput, amount: number): string
 export function subDays(date: DayInput, amount: number): string
 export function addWeeks(date: DayInput, amount: number): string
 export function subWeeks(date: DayInput, amount: number): string
+/**
+ * Overflow **clamps** to the last day of the target month; it never rolls into
+ * the next one. Same rule in both directions, and the same rule `setMonth`,
+ * `setDate` and `setYear` use.
+ * @example addMonths('2026-01-31', 1)  // '2026-02-28'  clamped, not '2026-03-03'
+ * @example addMonths('2026-03-31', -1) // '2026-02-28'
+ * @example addMonths('2024-01-31', 1)  // '2024-02-29'  leap year
+ */
 export function addMonths(date: DayInput, amount: number): string
 export function subMonths(date: DayInput, amount: number): string
 export function addYears(date: DayInput, amount: number): string
@@ -112,11 +149,19 @@ export function subQuarters(date: DayInput, amount: number): string
 
 /** Full year number. */
 export function getYear(date: DayInput): number
-/** Month number, ISO 8601: 1 = January … 12 = December. Not date-fns's 0-based index. */
+/**
+ * Month number, ISO 8601: 1 = January … 12 = December. Not date-fns's 0-based index.
+ * @example getMonth('2026-08-08') // 8   — date-fns would answer 7
+ * @example getMonth('2026-01-15') // 1
+ */
 export function getMonth(date: DayInput): number
 /** Day of month 1…31. */
 export function getDate(date: DayInput): number
-/** Weekday, ISO 8601: 1 = Monday … 7 = Sunday. Only Sunday differs from date-fns. */
+/**
+ * Weekday, ISO 8601: 1 = Monday … 7 = Sunday. Only Sunday differs from date-fns.
+ * @example getDay('2026-08-10') // 1   a Monday
+ * @example getDay('2026-08-09') // 7   a Sunday — date-fns would answer 0
+ */
 export function getDay(date: DayInput): number
 export function getDayOfYear(date: DayInput): number
 export function getDaysInMonth(date: DayInput): number
@@ -124,23 +169,54 @@ export function getDaysInMonth(date: DayInput): number
 export function getQuarter(date: DayInput): number
 export function isLeapYear(date: DayInput): boolean
 
+/**
+ * Overflow clamps, so 29 February survives a move to a common year.
+ * @example setYear('2024-02-29', 2026) // '2026-02-28'  clamped
+ */
 export function setYear(date: DayInput, year: number): string
-/** `month`: 1 = January … 12 = December (ISO 8601). */
+/**
+ * `month`: 1 = January … 12 = December (ISO 8601). Overflow clamps.
+ * @example setMonth('2026-01-31', 2) // '2026-02-28'  clamped
+ */
 export function setMonth(date: DayInput, month: number): string
+/**
+ * Overflow clamps to the end of the month. **date-fns rolls here instead**, so
+ * this is one of the few places the two answer differently on purpose.
+ * @example setDate('2026-02-01', 31) // '2026-02-28'  daymath clamps
+ */
 export function setDate(date: DayInput, dayOfMonth: number): string
 
 export function startOfMonth(date: DayInput): string
+/**
+ * @example endOfMonth('2024-02-01') // '2024-02-29'
+ */
 export function endOfMonth(date: DayInput): string
 export function startOfYear(date: DayInput): string
 export function endOfYear(date: DayInput): string
 export function startOfQuarter(date: DayInput): string
 export function endOfQuarter(date: DayInput): string
+/**
+ * `weekStartsOn` defaults to **7 (Sunday)**, and `0` is accepted for Sunday too.
+ * @example startOfWeek('2026-08-12')                     // '2026-08-09'  Sunday
+ * @example startOfWeek('2026-08-12', { weekStartsOn: 1 }) // '2026-08-10'  Monday
+ */
 export function startOfWeek(date: DayInput, options?: WeekOptions): string
 export function endOfWeek(date: DayInput, options?: WeekOptions): string
 
-/** Full days: `dateLeft − dateRight` (date-fns argument order). */
+/**
+ * Full days: `dateLeft − dateRight` (date-fns argument order).
+ * @example differenceInDays('2026-08-08', '2026-08-01') //  7
+ * @example differenceInDays('2026-08-01', '2026-08-08') // -7  order matters
+ */
 export function differenceInDays(dateLeft: DayInput, dateRight: DayInput): number
 export function differenceInWeeks(dateLeft: DayInput, dateRight: DayInput): number
+/**
+ * A month counts as full when `addMonths` would carry the earlier date to the
+ * later one, so `differenceInMonths(addMonths(d, n), d) === n` always holds. Use
+ * `differenceInCalendarMonths` to count boundaries crossed instead.
+ * @example differenceInMonths('2026-02-28', '2026-01-31')         // 1  addMonths clamps to here
+ * @example differenceInCalendarMonths('2026-02-01', '2026-01-31') // 1  one boundary, one day apart
+ */
 export function differenceInMonths(dateLeft: DayInput, dateRight: DayInput): number
 export function differenceInCalendarMonths(
   dateLeft: DayInput,
@@ -156,7 +232,11 @@ export function differenceInCalendarQuarters(
 
 export function isBefore(date: DayInput, dateToCompare: DayInput): boolean
 export function isAfter(date: DayInput, dateToCompare: DayInput): boolean
-/** Same calendar day. */
+/**
+ * Same calendar day. Measurement normalizes, so a mixed-calendar pair answers
+ * instead of throwing `Mismatched calendars` the way Temporal's own `equals` does.
+ * @example isEqual('2026-01-31[u-ca=buddhist]', '2026-01-31') // true  same day
+ */
 export function isEqual(dateLeft: DayInput, dateRight: DayInput): boolean
 /** Alias of `isEqual` (date-fns name). */
 export const isSameDay: typeof isEqual
@@ -173,6 +253,10 @@ export function isSameQuarter(dateLeft: DayInput, dateRight: DayInput): boolean
 export function compareAsc(dateLeft: DayInput, dateRight: DayInput): -1 | 0 | 1
 export function compareDesc(dateLeft: DayInput, dateRight: DayInput): -1 | 0 | 1
 
+/**
+ * Takes an **array**, not a rest argument.
+ * @example min(['2026-08-08', '2026-01-01']) // '2026-01-01'
+ */
 export function min(dates: DayInput[]): string
 export function max(dates: DayInput[]): string
 
@@ -183,14 +267,32 @@ export function isWednesday(date: DayInput): boolean
 export function isThursday(date: DayInput): boolean
 export function isFriday(date: DayInput): boolean
 export function isSaturday(date: DayInput): boolean
+/**
+ * ISO Saturday and Sunday (6 and 7). Not configurable, and no holiday calendar.
+ * @example isWeekend('2026-08-08') // true   a Saturday
+ * @example isWeekend('2026-08-10') // false  a Monday
+ */
 export function isWeekend(date: DayInput): boolean
 export function isFirstDayOfMonth(date: DayInput): boolean
 export function isLastDayOfMonth(date: DayInput): boolean
 
+/**
+ * Both ends **inclusive**, so a one-day interval returns one day.
+ * @example eachDayOfInterval({ start: '2026-08-08', end: '2026-08-10' })
+ * // ['2026-08-08', '2026-08-09', '2026-08-10']
+ */
 export function eachDayOfInterval(interval: Interval): string[]
 export function eachMonthOfInterval(interval: Interval): string[]
 export function eachYearOfInterval(interval: Interval): string[]
+/**
+ * Both ends **inclusive**, so a date equal to an endpoint is within.
+ * @example isWithinInterval('2026-08-10', { start: '2026-08-08', end: '2026-08-10' }) // true
+ */
 export function isWithinInterval(date: DayInput, interval: Interval): boolean
+/**
+ * Pull a day inside the interval, or return it unchanged if it is already inside.
+ * @example clamp('2026-12-25', { start: '2026-08-08', end: '2026-08-10' }) // '2026-08-10'
+ */
 export function clamp(date: DayInput, interval: Interval): string
 /**
  * date-fns default: `inclusive: false` (touching endpoints only is not overlap).

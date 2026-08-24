@@ -36,6 +36,11 @@ jobs:
       - name: Format
         if: matrix.node == 26
         run: npm run format:check
+      # Static too: an @example is source text, so its answer cannot vary by Node version. It runs
+      # here rather than nowhere because no other gate reads a JSDoc comment.
+      - name: Examples (every @example executed and asserted)
+        if: matrix.node == 26
+        run: npm run test:examples
       - run: npm test
       - name: Cross-runtime baseline
         run: npm run test:runtimes
