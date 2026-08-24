@@ -21,9 +21,11 @@
 // neither can be asserted. Every `@example` therefore lands in exactly one of three buckets —
 // asserted, skipped with a printed reason, or unaccounted — and unaccounted is a failure.
 //
-// `FLOOR` is the last guard, and it is the one that matters most: without it a broken collector
-// or a renamed file reports PASS over zero examples and exits 0, which is this gate quietly
-// disarming itself. All four behaviours are proved by planting, not assumed.
+// Two guards stop the gate disarming itself, and both were added because it DID. The accounting
+// check counts raw `@example` occurrences per file and fails when fewer were read than written —
+// a one-line `/** … @example … */` block was invisible to the collector once, 27 examples went
+// unchecked, and the run was green. `FLOOR` then catches the case where the count itself drops.
+// Every behaviour here is proved by planting the defect, never assumed.
 //
 //   node scripts/examples.mjs
 import { readFileSync } from 'node:fs'
@@ -44,7 +46,10 @@ function collect(file) {
   /** @type {{file: string, line: number, expr: string, expected: string}[]} */
   const found = []
   for (let i = 0; i < lines.length; i++) {
-    const tag = /^\s*\*\s*@example\s+(.*)$/u.exec(lines[i])
+    // Two shapes, and missing the second one hid 27 examples once. A multi-line block puts the tag
+    // behind a leading `*`; a one-line block `/** … @example … */` has no leading `*` at all, and
+    // its trailing `*/` has to come off or it lands inside the expected value.
+    const tag = /^\s*(?:\*|\/\*\*)?[^@]*@example\s+(.*?)(?:\s*\*\/)?$/u.exec(lines[i])
     if (tag === null) continue
     let body = tag[1]
     // A continuation is the next comment line with no tag and no code, starting with `//`.
@@ -95,13 +100,25 @@ function literalOf(expected) {
 // A FLOOR, because a gate that can quietly find nothing is not a gate. Rename a file, reflow a
 // comment, or break the regex, and without this the run reports PASS over zero examples and exits
 // 0. The number only has to move when examples are deliberately added or removed.
-const FLOOR = 41
+const FLOOR = 88
 
 let asserted = 0
 const skipped = []
 const failures = []
 /** `@example` lines seen but placed in no bucket. Must stay zero, or the accounting has a hole. */
 let unaccounted = 0
+
+// THE ACCOUNTING MUST CLOSE. Every `@example` written in a source file has to end up in exactly
+// one bucket, and the only way to know that is to count the raw occurrences and compare. Without
+// this the collector can miss a whole SHAPE of comment and still report PASS — which is what
+// happened: a one-line `/** … @example … */` block was invisible, 27 examples went unchecked, and
+// the run was green. A regex fix alone would have closed that instance and not the class.
+/** @type {Record<string, number>} */
+const onDisk = {}
+for (const file of FILES) {
+  const text = readFileSync(new URL(`../${file}`, import.meta.url), 'utf8')
+  onDisk[file] = (text.match(/@example/gu) ?? []).length
+}
 
 for (const file of FILES) {
   for (const ex of collect(file)) {
@@ -177,6 +194,19 @@ console.log(
   `daymath examples — ${asserted} asserted, ${skipped.length} not assertable, ${unaccounted} unaccounted\n`,
 )
 for (const s of skipped) console.log(`  skip  ${s}`)
+
+const bucketed = asserted + skipped.length + unaccounted
+const written = Object.values(onDisk).reduce((a, b) => a + b, 0)
+if (bucketed !== written) {
+  failures.push(
+    `${written} @example tags are written in the source but only ${bucketed} were read\n` +
+      `    ${Object.entries(onDisk)
+        .map(([f, n]) => `${f}: ${n}`)
+        .join(', ')}\n` +
+      `    The collector is missing a comment SHAPE, so those examples are unchecked and this\n` +
+      `    run would otherwise be green. Fix collect(), do not lower this check.`,
+  )
+}
 
 if (asserted < FLOOR) {
   failures.push(
