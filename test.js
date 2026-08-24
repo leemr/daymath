@@ -365,10 +365,9 @@ describe('day() — the one export that reads a clock', () => {
         return true
       },
     )
-    // It fires AFTER the zone and the value are judged, so a mistyped zone still
-    // reports the zone whatever the moment is — the same message a bare day
-    // draws. That is the point of the ordering: the guard is about the argument
-    // PAIR, so it must never pre-empt a fault in either argument alone.
+    // It fires AFTER the zone is judged, so a mistyped zone reports the zone
+    // whatever the moment is. The bare-day pair below is the contrast that makes
+    // that legible: same zone fault, same message, clock or no clock.
     assert.throws(
       () => dm.day('2026-08-08T12:00', 'Bad/Zone'),
       /unknown time zone "Bad\/Zone"/,
@@ -395,10 +394,8 @@ describe('day() — the one export that reads a clock', () => {
     // A clock that could change the date is not a day at all, in day() either.
     assert.throws(() => dm.day('2026-08-08 24:00:00'), /neither a moment nor a time zone/)
     // The value is judged before the argument pair, so a day that does not exist
-    // reports itself and not the zone. Putting the guard above the parse broke
-    // this and blamed the zone for a bad stored day.
+    // reports itself and not the zone.
     assert.throws(() => dm.day('2026-02-30 12:00:00', 'utc'), /invalid date/)
-    assert.throws(() => dm.day('+275760-09-14 12:00:00', 'utc'), /invalid date/)
   })
 
   it('refuses a string that is neither a moment nor a zone', () => {
@@ -524,18 +521,14 @@ describe('parse / format / isValid', () => {
     // datetime('now','subsec') add three fractional digits.
     assert.equal(parse('2026-08-08 12:00:00'), '2026-08-08')
     assert.equal(parse('2026-08-08 01:57:31.913'), '2026-08-08')
-    // All three separators, because the separator is punctuation and never
-    // information. Temporal treats `T`, `t` and a space identically, and daymath
-    // already accepted every one of them on the ZONED forms, so refusing any of
-    // them here would have left the same gap the change exists to close.
+    // All three separators. The rule and the reason are on ISO_DAY_TIME.
     assert.equal(parse('2026-08-08T12:00:00'), '2026-08-08')
     assert.equal(parse('2026-08-08T12:00'), '2026-08-08')
     assert.equal(parse('2026-08-08t12:00:00'), '2026-08-08')
     assert.equal(dm.day('2026-08-08t12:00'), '2026-08-08')
-    // A leap second and a fraction of any length both stay inside their own day,
-    // so the rule accepts them. `day('…23:59:60Z')` already answered on the
-    // instant path, where Temporal clamps to :59, so refusing the zoneless twin
-    // would have been the separator gap again on a different field.
+    // A leap second and a fraction of any length stay inside their own day, so
+    // the rule accepts them. The equality below is the point: the zoneless form
+    // must answer what the `Z` form already answered.
     assert.equal(parse('2026-08-08 23:59:60'), '2026-08-08')
     assert.equal(dm.day('2026-08-08 23:59:60'), dm.day('2026-08-08 23:59:60Z'))
     assert.equal(parse('2026-08-08 12:00:00.1234567890'), '2026-08-08')

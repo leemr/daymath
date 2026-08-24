@@ -63,20 +63,17 @@ const ISO_DAY = /^(?:[+-]\d{6}|\d{4})-\d{2}-\d{2}$/u
  * `strftime('%Y-%m-%d %H:%M:%f')` all emit a space, seconds and optional
  * fractions — so a column value needs no reshaping before daymath reads it.
  *
- * **The separator was never the gap, which is why all three spellings are here.**
- * Temporal accepts a space and a lowercase `t` wherever it accepts `T`, so
- * `'2026-08-08 12:00:00Z'`, `'2026-08-08t12:00:00Z'`, the offset form and the
- * `[Zone]` form all answered before this pattern existed. One hole was left: a
- * clock naming NO zone. Every separator fell in it, so every one comes out of it.
- * Accepting two of three would make the rule about punctuation, not information.
+ * **All three separators, because a separator is punctuation and never
+ * information.** Temporal accepts a space and a lowercase `t` wherever it accepts
+ * `T`, and the ZONED forms of all three already answered, so the only hole was a
+ * clock naming NO zone.
  *
  * **The hour is the only bound, because the hour is the only field that can
  * change the date. That is the whole rule: daymath drops a clock only when the
  * clock cannot move the day.** ISO `24:00` is midnight starting the NEXT day, so
  * dropping it would answer the day before; Temporal refuses it and so does this.
- * A leap second `23:59:60` and a fraction of any length both stay inside their
- * own day, so both are accepted — and `day('…23:59:60Z')` already answered, so
- * refusing the zoneless twin would have been the same gap as the separator.
+ * A leap second and a fraction of any length stay inside their own day, so both
+ * are accepted, matching what `day('…23:59:60Z')` already answered.
  *
  * `Z`, an offset and a `[Zone]` cannot reach this pattern — it is anchored — so
  * a string that names a real instant still takes the instant path in `day()`.
@@ -376,7 +373,7 @@ function toPlainDate(value, label = 'date') {
   const bare = bareDay(text)
   if (bare === null) {
     throw new RangeError(
-      `daymath: ${label} must be ISO 8601 day YYYY-MM-DD or ±YYYYYY-MM-DD, optionally with a zoneless clock HH:MM[:SS] where the hour is 00-23 (got ${JSON.stringify(text)})`,
+      `daymath: ${label} must be ISO 8601 day YYYY-MM-DD or ±YYYYYY-MM-DD, optionally with a zoneless clock HH:MM[:SS[.fff]] after a T, t or space, where only the hour is bounded (00-23) (got ${JSON.stringify(text)})`,
     )
   }
   try {
@@ -538,8 +535,9 @@ function toInterval(interval) {
  *   truncated the same way, so a fractional value is not an error
  * - an ISO 8601 day string, or a `Temporal.PlainDate` from any implementation,
  *   both of which are already a day
- * - a day carrying a zoneless wall clock, `'YYYY-MM-DD HH:MM[:SS[.fff]]'` or the
- *   same with `T`, which is a day with noise on it: the clock is dropped
+ * - a day carrying a zoneless wall clock, `'YYYY-MM-DD HH:MM[:SS[.fff]]'`, with
+ *   `T`, `t` or a space between them: a day with noise on it, and the clock is
+ *   dropped. Only the hour is bounded, at 00-23
  * - an ISO 8601 timestamp carrying `Z` or an offset, which names an exact
  *   instant, so there is nothing left to guess
  * - a string carrying a `[Zone]` annotation, which names its own zone, so it
@@ -720,8 +718,7 @@ export function day(moment, tz) {
   // so that path has nothing to carry and would answer bare ISO regardless.
   if (isDay) {
     // The value is judged FIRST, so a day that does not exist reports itself rather than the zone.
-    // Every sibling refusal validates the value before the argument pair, and putting this guard
-    // above the parse broke that: `day('2026-02-30 12:00:00', 'utc')` blamed the zone.
+    // The guard below is about the argument PAIR, so it must never pre-empt a fault in either half.
     const answer = toDayString(isoOf(toPlainDate(moment)))
     // The one argument pair daymath refuses rather than answers. On 2026-08-24 SQLite's
     // `datetime('now')` read 2026-08-24 01:57:31 and `datetime('now','localtime')` read

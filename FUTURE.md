@@ -24,8 +24,8 @@ start until that call is answered.
 | 7 | **Prose sweep for 1.0** | move supporting narrative out of this file and the source headers into `todo.claude` | — | no release |
 
 **SQL DATETIME is done and is off this list.** It was row 2. It sits under `[Unreleased]` in
-`CHANGELOG.md` until the release commit stamps the version. The settled record is in the input
-section below, and `CHANGELOG.md` carries the measurements.
+`CHANGELOG.md` until the release commit stamps the version, and `CHANGELOG.md` is the only place
+the rule and its measurements are written down.
 
 **Row 1 is not free of a release, and the old label saying so was wrong.** `README.md` is one of the
 five files in the npm tarball, so repointing the badge markup leaves npmjs serving the old badge
@@ -208,15 +208,13 @@ experiments, and only an A/B made inside one run is evidence.
   `setDate` becomes `d.with({day: 1}).add({days: n - 1})` (118,703 comparisons) and `setYear`
   becomes `d.with({year: y, day: 1}).add({days: d.day - 1})` (63,917 comparisons). The full
   argument is in `scripts/differential.mjs` under `setDate` and `setYear`.
-- **SQL DATETIME — DONE, awaiting a release stamp.** A zoneless wall clock is a day and the clock is dropped, in
-  `bareDay`, so all 69 exports take it. `day()` refuses `tz` alongside one, because naming a zone
-  means convert. The hour stops at 23, because ISO `24:00` starts the next day and a dropped clock
-  must not move the date. `CHANGELOG.md` holds the measurements and the A/B that bounded the change.
+- **SQL DATETIME — DONE, awaiting a release stamp.** The rule and the measurements live in
+  `CHANGELOG.md`, and they are not restated here: a copy of a settled rule has to be re-edited on
+  every change to it, and this one already went stale once inside a single review round.
 
-  **Two things it settled for the rows below.** The space separator was never the gap — Temporal
-  accepts a space wherever it accepts `T`, so every ZONED space form already answered. And a new
-  input spelling in `bareDay` widens all 69 exports at once, not just `parse`. Cost the next one
-  that way.
+  **What it settled for the rows below, which is the part this file is for.** A new input spelling in
+  `bareDay` widens all 69 exports at once, not just `parse`, because `bareDay` is the funnel they
+  share. Cost the next one that way rather than as a `parse` feature.
 
 - **ISO week-date (row 2).** `2026-W32-5` is a day in ISO 8601. `parse` and `day` refuse it today: it
   sits in the `JUNK` list in `scripts/battery.mjs` and in the inline list in the `test.js` case
@@ -238,11 +236,10 @@ experiments, and only an A/B made inside one run is evidence.
   // '2026-08-13'
   ```
 
-  **The number in that example is measured, and the obvious guess is wrong.** 2026-08-07 is a
-  Friday, and date-fns 4.4.0 answers `2026-08-12` for `addBusinessDays(d, 3)` with NO holidays
-  (Mon 10, Tue 11, Wed 12). Excluding Monday the 10th must therefore push it to `2026-08-13`. An
-  earlier draft of this row said `2026-08-12`, which is the no-holiday answer, so the `holidays`
-  argument appeared to do nothing — the opposite of the point. Run it before writing the test.
+  **That number is measured, and the obvious guess is wrong.** 2026-08-07 is a Friday, and
+  date-fns 4.4.0 answers `2026-08-12` for `addBusinessDays(d, 3)` with NO holidays (Mon 10, Tue 11,
+  Wed 12). So excluding Monday the 10th must push it to `2026-08-13`. Quote `2026-08-12` here and
+  the `holidays` argument looks inert. Run it before writing the test.
 
   `weekend` defaults to `[6, 7]`. `holidays` is a day list, or a `string => boolean`. Both, because a Gulf clinic, an exchange, and a tour operator each own a different closed set. **Do not bake US federal holidays into the library.** A helper that only skips Saturday and Sunday is a US office library, not a field-universal one.
 - Rich display / i18n — **out of scope** (Temporal+Intl or date-fns TZ formatters)

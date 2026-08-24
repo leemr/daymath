@@ -62,7 +62,7 @@ is dropped by the same funnel every export shares, so this is not a `day()` feat
 ```js
 addDays(row.created_at, 30)            // '2026-09-07'  from '2026-08-08 12:00:00'
 startOfMonth('2026-08-08 01:57:31.913') // '2026-08-01'  strftime('%…%H:%M:%f')
-getYear('2026-08-08T12:00')            // 2026          the ISO twin, same rule
+getYear('2026-08-08t12:00')            // 2026          T, t or a space; same rule
 ```
 
 `datetime()`, `CURRENT_TIMESTAMP` and `strftime('%Y-%m-%d %H:%M:%f')` all emit that

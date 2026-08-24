@@ -142,8 +142,8 @@ const INSTANTS = [
 const WALL_CLOCKS = [
   '2026-08-08 12:00:00', // SQLite datetime() and CURRENT_TIMESTAMP
   '2026-08-08 01:57:31.913', // strftime('%Y-%m-%d %H:%M:%f'), and datetime('now','subsec')
-  '2026-08-08T12:00:00', // the ISO twin, with seconds
-  '2026-08-08T12:00', // the ISO twin, minutes only
+  '2026-08-08T12:00:00', // the T separator, with seconds
+  '2026-08-08T12:00', // the T separator, minutes only
   '2026-08-08t12:00:00', // the lowercase separator, which Temporal also accepts
   '2026-08-08 23:59:60', // a leap second stays inside its own day, so it is accepted
   '2026-08-08 12:00:00.1234567890', // a fraction longer than Temporal itself takes
