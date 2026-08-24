@@ -80,18 +80,31 @@ export type WeekOptions = {
  *
  * A calendar that renumbers months or days is still refused where it is
  * applied, which means with a `[Zone]` bracket and on a day string.
- * @example day()                          // today, UTC
- * @example day('Asia/Tokyo')              // today in Tokyo
  * @example day(row.createdAt)             // a Date, read in UTC
  * @example day(row.createdAt, 'Asia/Tokyo') // the same instant, Tokyo's day
  * @example day('1999-01-01T00:00:00Z')    // '1999-01-01'
  * @example day('2026-08-08 12:00:00')     // '2026-08-08'  a SQLite DATETIME
+ * @example day('2026-05-05', 'Asia/Tokyo') // '2026-05-05'  a day carries no time
  */
-export function day(tz?: string): string
 export function day(
   moment: Date | number | DayInput | null | undefined,
   tz?: string,
 ): string
+/**
+ * Today's calendar day, in a zone. **This is the one overload that reads a clock**, so it is the
+ * only call in daymath that is not a pure function. Give the other overload a moment and it is.
+ *
+ * The zone defaults to UTC, and the default is STATED rather than assumed: daymath has no silent
+ * local now. UTC is not your day for part of every day — it runs ahead of `America/New_York` for
+ * 16.7% of the day and behind `Asia/Tokyo` for 37.5% — so name your zone when that matters.
+ *
+ * A lone string here is read as a zone only after it fails to be a day, a zoned time and an
+ * instant, in that order. The zone test is by shape, so a timestamp can never be read as a zone.
+ * @example day()             // today, in UTC
+ * @example day('Asia/Tokyo') // today in Tokyo
+ * @example day('+05:30')     // a bare offset is a zone too
+ */
+export function day(tz?: string): string
 
 /**
  * True for a valid daymath day string / PlainDate.

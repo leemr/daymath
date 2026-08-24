@@ -100,7 +100,7 @@ function literalOf(expected) {
 // A FLOOR, because a gate that can quietly find nothing is not a gate. Rename a file, reflow a
 // comment, or break the regex, and without this the run reports PASS over zero examples and exits
 // 0. The number only has to move when examples are deliberately added or removed.
-const FLOOR = 88
+const FLOOR = 89
 
 let asserted = 0
 const skipped = []
