@@ -18,14 +18,23 @@ start until that call is answered.
 | 1 | **Size badge** | `docs/size.json` and a shields endpoint, so history lives in git | — | rides a release |
 | 2 | **ISO week-date** | parse/format `YYYY-Www-D`; ISO week getters and bounds | — | minor |
 | 3 | **Business days** | add/sub/diff/is, with a caller-owned closed-day hook | — | minor |
-| 4 | **npm provenance** | publish from Actions with OIDC instead of a laptop token | — | mechanics |
-| 5 | **JSDoc examples** | deeper `@example` on the hot exports | — | patch |
-| 6 | **Awesome-list** | submit to an existing awesome list | a stable API | external |
-| 7 | **Prose sweep for 1.0** | move supporting narrative out of this file and the source headers into `todo.claude` | — | no release |
+| 4 | **Markdown lint** | `markdownlint-cli2` as a gate, so a prose defect stops being invisible | — | no release |
+| 5 | **npm provenance** | publish from Actions with OIDC instead of a laptop token | — | mechanics |
+| 6 | **JSDoc examples** | deeper `@example` on the hot exports | — | patch |
+| 7 | **Awesome-list** | submit to an existing awesome list | a stable API | external |
+| 8 | **Prose sweep for 1.0** | move supporting narrative out of this file and the source headers into `todo.claude` | — | no release |
 
 **SQL DATETIME is done and is off this list.** It was row 2. It sits under `[Unreleased]` in
 `CHANGELOG.md` until the release commit stamps the version, and `CHANGELOG.md` is the only place
 the rule and its measurements are written down.
+
+**Row 4 is measured, not a guess.** `markdownlint-cli2` catches the double-blank-line class
+(`MD012`) and would have caught one of the two Markdown defects this PR shipped and then fixed. It
+does **not** catch the other: a heading placed above the wrong bullets, correctly spaced, is
+semantic and no linter reads it. Four rules must be off or the noise buries the signal — `MD013`
+(line length, which would mean reflowing prose), `MD024` (this changelog repeats `### Changed` on
+purpose), `MD034` (bare URLs are deliberate here) and `MD033`. With those off, all five `.md` files
+report zero today. Use the linter, never a formatter: a formatter reflows, and that is not wanted.
 
 **Row 1 is not free of a release, and the old label saying so was wrong.** `README.md` is one of the
 five files in the npm tarball, so repointing the badge markup leaves npmjs serving the old badge
@@ -42,7 +51,7 @@ additive and reverse no documented promise. Accepting `YYYY-Www-D` as INPUT is a
 it lands in `bareDay`, so it widens all 69 exports at once, exactly as SQL DATETIME did. The
 additive half is the cheaper, safer start.
 
-**Row 7, noted 2026-08-09.** This file and several source headers carry the REASONING behind a
+**Row 8, noted 2026-08-09.** This file and several source headers carry the REASONING behind a
 decision as well as the decision. The reasoning belongs in the local `todo.claude`, which is the
 deep record; this file should carry what remains to do and the one-line cost of each. Do it in one
 deliberate pass at 1.0, not opportunistically, or the record gets split with no rule to find it by.

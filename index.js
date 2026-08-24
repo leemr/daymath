@@ -70,10 +70,23 @@ const ISO_DAY = /^(?:[+-]\d{6}|\d{4})-\d{2}-\d{2}$/u
  *
  * **The hour is the only bound, because the hour is the only field that can
  * change the date. That is the whole rule: daymath drops a clock only when the
- * clock cannot move the day.** ISO `24:00` is midnight starting the NEXT day, so
- * dropping it would answer the day before; Temporal refuses it and so does this.
- * A leap second and a fraction of any length stay inside their own day, so both
- * are accepted, matching what `day('…23:59:60Z')` already answered.
+ * clock cannot move the day.** A leap second and a fraction of any length stay
+ * inside their own day, so both are accepted, matching what `day('…23:59:60Z')`
+ * already answered.
+ *
+ * **`24:00` is refused, and the reason is that SQLite disagrees with itself
+ * about it.** ISO `24:00` is midnight starting the NEXT day, and SQLite's own
+ * `julianday('2026-08-08 24:00:00')` is 2461261.5 — byte-identical to
+ * `julianday('2026-08-09 00:00:00')` — while its `date()` and
+ * `strftime('%Y-%m-%d')` on the same string both answer `'2026-08-08'`. So no
+ * answer daymath could give agrees with the database: the 9th contradicts its
+ * `date()`, the 8th contradicts its `julianday()`. Refusing is the only option
+ * that never silently disagrees. Temporal refuses `24:00` on every path too, so
+ * accepting would also mean doing carry arithmetic the engine will not do.
+ *
+ * That also separates it from the two cases above. `t` and `:60` were holes
+ * because the ZONED twin already answered; every `24:00` spelling is refused
+ * today, zoned and zoneless, so refusing it is the consistent choice.
  *
  * `Z`, an offset and a `[Zone]` cannot reach this pattern — it is anchored — so
  * a string that names a real instant still takes the instant path in `day()`.
