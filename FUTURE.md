@@ -1,6 +1,7 @@
 # daymath — future work
 
-Checked-in backlog. Session handoff: local `todo.grok` (gitignored).
+Checked-in backlog. Session handoff: local `./todo`, which is untracked and NOT gitignored — the
+`??` line in `git status` is the point, so a stale handoff stays visible.
 
 **Live now:** `daymath@0.6.0` on npmjs · `@leemr/daymath@0.6.0` on GitHub Packages · https://leemr.github.io/daymath/
 
@@ -14,14 +15,34 @@ start until that call is answered.
 
 | # | Name | What it does | Blocked by | Version |
 |---|---|---|---|---|
-| 1 | **Size badge** | `docs/size.json` and a shields endpoint, so history lives in git | — | no release |
-| 2 | **Business days** | business-day helpers and the ISO week suite | — | 0.7.0 |
-| 3 | **npm provenance** | publish from Actions with OIDC instead of a laptop token | — | mechanics |
-| 4 | **JSDoc examples** | deeper `@example` on the hot exports | — | patch |
-| 5 | **Awesome-list** | submit to an existing awesome list | a stable API | external |
-| 6 | **Prose sweep for 1.0** | move supporting narrative out of this file and the source headers into `todo.claude` | — | no release |
+| 1 | **Size badge** | `docs/size.json` and a shields endpoint, so history lives in git | — | rides a release |
+| 2 | **ISO week-date** | parse/format `YYYY-Www-D`; ISO week getters and bounds | — | minor |
+| 3 | **Business days** | add/sub/diff/is, with a caller-owned closed-day hook | — | minor |
+| 4 | **npm provenance** | publish from Actions with OIDC instead of a laptop token | — | mechanics |
+| 5 | **JSDoc examples** | deeper `@example` on the hot exports | — | patch |
+| 6 | **Awesome-list** | submit to an existing awesome list | a stable API | external |
+| 7 | **Prose sweep for 1.0** | move supporting narrative out of this file and the source headers into `todo.claude` | — | no release |
 
-**Row 6, noted 2026-08-09.** This file and several source headers carry the REASONING behind a
+**SQL DATETIME is done and is off this list.** It was row 2. It sits under `[Unreleased]` in
+`CHANGELOG.md` until the release commit stamps the version. The settled record is in the input
+section below, and `CHANGELOG.md` carries the measurements.
+
+**Row 1 is not free of a release, and the old label saying so was wrong.** `README.md` is one of the
+five files in the npm tarball, so repointing the badge markup leaves npmjs serving the old badge
+until the next publish. The badge itself works on GitHub immediately. Nothing blocks the row; it
+just has to ride a release to be fully live.
+
+**Take rows 2 then 3 in one minor.** A release cycle is the expensive part, so they land together.
+Week-date has no policy call. Business days needs the closed-day hook decided, and the ISO
+Monday-start helpers from row 2 make that suite cheaper to write. Row 3 is not blocked on row 2 in
+the DAG sense; the order is speed-to-usable.
+
+**Row 2 bundles two unlike jobs, so cost them apart.** The eight getters and bounds are purely
+additive and reverse no documented promise. Accepting `YYYY-Www-D` as INPUT is a different animal:
+it lands in `bareDay`, so it widens all 69 exports at once, exactly as SQL DATETIME did. The
+additive half is the cheaper, safer start.
+
+**Row 7, noted 2026-08-09.** This file and several source headers carry the REASONING behind a
 decision as well as the decision. The reasoning belongs in the local `todo.claude`, which is the
 deep record; this file should carry what remains to do and the one-line cost of each. Do it in one
 deliberate pass at 1.0, not opportunistically, or the record gets split with no rule to find it by.
@@ -57,6 +78,7 @@ go red. Keep this one green and the hazard stays closed.
 |---|---|---|
 | **Orphan days** | rebuild `day()` on `Intl`, so 5 historical days read the date part instead of resolving the instant | buys 1.9 kB gzip; changes 0.5.0 behaviour. **Blocks nothing** — the port keeps Temporal in `day()` |
 | **setDate rolling** | daymath constrains, date-fns rolls | blocks nothing; see API / product below |
+| **Closed days** | list, predicate, or both? default weekend? | blocks row 3. Recommendation: both, default ISO Saturday and Sunday (`[6, 7]`), no holiday calendar in the library |
 
 ### Not a pull request
 
@@ -186,8 +208,38 @@ experiments, and only an A/B made inside one run is evidence.
   `setDate` becomes `d.with({day: 1}).add({days: n - 1})` (118,703 comparisons) and `setYear`
   becomes `d.with({year: y, day: 1}).add({days: d.day - 1})` (63,917 comparisons). The full
   argument is in `scripts/differential.mjs` under `setDate` and `setYear`.
-- Business days, ISO week suite  
-- Rich display / i18n — **out of scope** (Temporal+Intl or date-fns TZ formatters)  
+- **SQL DATETIME — DONE, awaiting a release stamp.** A zoneless wall clock is a day and the clock is dropped, in
+  `bareDay`, so all 69 exports take it. `day()` refuses `tz` alongside one, because naming a zone
+  means convert. The hour stops at 23, because ISO `24:00` starts the next day and a dropped clock
+  must not move the date. `CHANGELOG.md` holds the measurements and the A/B that bounded the change.
+
+  **Two things it settled for the rows below.** The space separator was never the gap — Temporal
+  accepts a space wherever it accepts `T`, so every ZONED space form already answered. And a new
+  input spelling in `bareDay` widens all 69 exports at once, not just `parse`. Cost the next one
+  that way.
+
+- **ISO week-date (row 2).** `2026-W32-5` is a day in ISO 8601. `parse` and `day` refuse it today: it
+  sits in the `JUNK` list in `scripts/battery.mjs` and in the inline list in the `test.js` case
+  "refuses a string that is neither a moment nor a zone" — `test.js` has no constant called `JUNK`.
+  Accept the extended form `YYYY-Www-D` and the compact form `YYYYWwwD`. `parse('2026-W32-5')` must
+  answer `'2026-08-07'`, measured. Add one format pattern for the same spelling, still not locale
+  display. Then the date-fns-named ISO week suite: `getISOWeek`, `getISOWeekYear`, `setISOWeek`,
+  `startOfISOWeek`, `endOfISOWeek`, `isSameISOWeek`, `getISOWeeksInYear`,
+  `differenceInCalendarISOWeeks`. All eight exist in date-fns 4.4.0, so each one can be added to
+  `CASES` in `scripts/differential.mjs` and measured against the oracle. Week 1 is the week that
+  contains 4 January. Monday starts the week. That is ISO, not `weekStartsOn: 7`.
+- **Business days (row 3, same minor).** date-fns names: `addBusinessDays`, `subBusinessDays`,
+  `differenceInBusinessDays`, `isBusinessDay`. `isWeekend` takes one argument today and is hardcoded
+  to ISO Saturday and Sunday; it WOULD gain the same options object. Closed days are an argument,
+  same shape as `weekStartsOn`:
+
+  ```js
+  addBusinessDays('2026-08-07', 3, { holidays: ['2026-08-10'] })
+  // '2026-08-12'
+  ```
+
+  `weekend` defaults to `[6, 7]`. `holidays` is a day list, or a `string => boolean`. Both, because a Gulf clinic, an exchange, and a tour operator each own a different closed set. **Do not bake US federal holidays into the library.** A helper that only skips Saturday and Sunday is a US office library, not a field-universal one.
+- Rich display / i18n — **out of scope** (Temporal+Intl or date-fns TZ formatters)
 - See the Order section for what each remaining row costs in semver.  
 
 **Done:** 0.2 calendar surface; expanded ISO years; `isValid(Date)` throws; `isSameDay` = `isEqual`;
@@ -211,6 +263,9 @@ calendar surface is documented in `README.md`; the measurement is in `CHANGELOG.
 - date-fns-shaped **names**; values are ISO day **strings**, not `Date`  
 - `getMonth`/`setMonth` **1–12** (ISO, 1=January); `getDay` **1=Mon…7=Sun** (ISO); `weekStartsOn` default `7`, `0` still accepted for Sunday — changed in 0.3.0, was date-fns 0-based  
 - `differenceInMonths` counts a month as full when `addMonths` would carry the earlier date to the later one, so the round-trip law holds — changed in 0.3.0, was Temporal `since`  
+- **Exports do not funnel through `day()`.** `day()` is the moment door and the only clock. `parse` validates a day. Routing `addDays` through `day()` would make a missing argument read now, and would spread moment parsing across the whole surface. `Date` and instants enter through `day()` and nowhere else. SQL DATETIME held to this: it is a day spelling, so it extended `bareDay`, the shared funnel, and no export became impure.
+- **A zoneless clock plus a zone is the one argument pair `day()` refuses rather than answers.** Settled with SQL DATETIME. Naming a zone means convert, and a clock with no zone gives nothing to convert from. A bare day plus a zone still answers, because nothing is discarded there.
+- **Do not widen parse to `'11/12/2026'` or `'2026/08/08'`.** Unknowable or sloppy. Week-date is ISO. Those are not.
 - npm badge orange = shields style, not failure  
 - Sidebar “Packages” = GitHub Packages only; empty ≠ missing npmjs package  
 - GitHub Packages doc = `npm.pkg.github.com` + scoped names; not auto-publish to npmjs  

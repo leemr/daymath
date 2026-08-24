@@ -53,7 +53,25 @@ day(row.createdAt)                     // '2026-08-07'  a Date
 day(1761616161771)                     // '2025-10-28'  epoch milliseconds
 day('1999-01-01T00:00:00Z')            // '1999-01-01'  an ISO timestamp
 day('2026-05-05')                      // '2026-05-05'  already a day
+day('2026-08-08 12:00:00')             // '2026-08-08'  a SQLite DATETIME
 ```
+
+A **SQLite `DATETIME` goes straight in**, and so does the whole surface — the clock
+is dropped by the same funnel every export shares, so this is not a `day()` feature.
+
+```js
+addDays(row.created_at, 30)            // '2026-09-07'  from '2026-08-08 12:00:00'
+startOfMonth('2026-08-08 01:57:31.913') // '2026-08-01'  strftime('%…%H:%M:%f')
+getYear('2026-08-08T12:00')            // 2026          the ISO twin, same rule
+```
+
+`datetime()`, `CURRENT_TIMESTAMP` and `strftime('%Y-%m-%d %H:%M:%f')` all emit that
+shape, so a column value needs no reshaping first. **Pass a zone with one and it
+throws.** Naming a zone means convert, and a clock with no zone gives nothing to
+convert from — and `datetime()` defaults to UTC, so a silent answer would hand the
+UTC day to the one caller who asked for a local one. Put the zone in the string
+(`Z`, an offset, or `[Zone]`) and it converts normally.
+
 
 Name a zone when the answer depends on one.
 
@@ -69,7 +87,7 @@ UTC is still not your day for part of every day — it runs ahead of `America/Ne
 for 16.7% of the day, and behind `Asia/Tokyo` for 37.5% — so name your zone when
 that matters.
 
-Four rules worth knowing:
+Six rules worth knowing:
 
 - A **number is epoch milliseconds**, exactly as `new Date(n)` reads it. A seconds
   timestamp read as milliseconds lands in 1970, with no error. daymath states the
@@ -84,9 +102,11 @@ Four rules worth knowing:
   the UTC default never applies. `day(zdt.toString())` equals `zdt.toPlainDate()`.
   A browser sending `'2026-08-08T20:00:00-04:00[America/New_York]'` gets back the
   8th, which is the date its user saw. Passing `tz` as well throws.
-- A string with **neither** is refused. `'2026-08-08T12:00'` names no instant and
-  no zone, so daymath would have to pick one, and it will not pick for you. Name
-  the zone — `'2026-08-08T12:00[America/New_York]'` — and it is accepted.
+- A **zoneless wall clock is a day.** `'2026-08-08 12:00:00'` and
+  `'2026-08-08T12:00'` both answer `'2026-08-08'`; the clock is dropped, never read.
+  Pass `tz` with one and it **throws** — naming a zone means convert, and a clock
+  with no zone gives nothing to convert from. Name the zone in the string —
+  `'2026-08-08T12:00[America/New_York]'` — and it converts.
 - **`'11/12/2026'` is refused.** Nobody can tell November from December in it.
 
 A lone string takes one of four roles, decided in this order: a day, a zoned time,
