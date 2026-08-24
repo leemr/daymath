@@ -214,7 +214,7 @@ For the accepting family only the year label moves, so every export still answer
 the annotation rides along:
 
 ```js
-getYear('2026-01-31[u-ca=buddhist]')        // 2569, not 2026
+getYear('2026-01-31[u-ca=buddhist]')        // 2569  not 2026
 getMonth('2026-01-31[u-ca=buddhist]')       // 1
 addDays('2026-01-31[u-ca=buddhist]', 1)     // '2026-02-01[u-ca=buddhist]'
 setYear('2026-01-31[u-ca=buddhist]', 2570)  // '2027-01-31[u-ca=buddhist]'

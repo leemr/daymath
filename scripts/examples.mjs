@@ -21,10 +21,11 @@
 // neither can be asserted. Every `@example` therefore lands in exactly one of three buckets —
 // asserted, skipped with a printed reason, or unaccounted — and unaccounted is a failure.
 //
-// Two guards stop the gate disarming itself, and both were added because it DID. The accounting
-// check counts raw `@example` occurrences per file and fails when fewer were read than written —
-// a one-line `/** … @example … */` block was invisible to the collector once, 27 examples went
-// unchecked, and the run was green. `FLOOR` then catches the case where the count itself drops.
+// Two guards stop the gate disarming itself, and both exist because it DID. The ACCOUNTING check
+// counts claims per file and fails when fewer were read than written — a one-line
+// `/** … @example … */` block was invisible to the collector once, 27 examples went unchecked, and
+// the run was green. `SKIP_CEILING` catches the other direction, a checked claim being downgraded
+// to prose, which the accounting cannot see because the written total does not move.
 // Every behaviour here is proved by planting the defect, never assumed.
 //
 //   node scripts/examples.mjs
@@ -32,6 +33,14 @@ import { readFileSync } from 'node:fs'
 import * as dm from '../index.js'
 
 const FILES = ['index.d.ts', 'index.js']
+
+// `README.md` is checked too, and it is the file that most needed it: it ships in the tarball, it
+// is what a developer reads first, and three of its `day()` lines had silently rotted before this
+// script existed. Fixing those three closed the instances; reading the file closes the class.
+//
+// A claim here is any line inside a ```js fence that carries a `//`. A line without one is a
+// statement and not a claim, so it is not counted. Everything WITH one must land in a bucket.
+const PROSE_FILES = ['README.md']
 
 /** Everything an example may reference, so the expression can be evaluated as written. */
 const scope = { ...dm }
@@ -69,6 +78,42 @@ function collect(file) {
 }
 
 /**
+ * Pull `expression // expected` claims out of the ```js fences in a Markdown file.
+ *
+ * Only fenced `js` is read, so a ```bash block cannot be mistaken for a claim. An `import` line
+ * and a comment-only line are not claims either.
+ * @param {string} file
+ */
+function collectFenced(file) {
+  const lines = readFileSync(new URL(`../${file}`, import.meta.url), 'utf8').split('\n')
+  /** @type {{file: string, line: number, expr: string, expected: string|null}[]} */
+  const found = []
+  let inJs = false
+  for (let i = 0; i < lines.length; i++) {
+    const fence = /^```(\w*)\s*$/u.exec(lines[i])
+    if (fence !== null) {
+      inJs = fence[1] === 'js' ? !inJs : inJs && false
+      continue
+    }
+    if (!inJs) continue
+    const line = lines[i]
+    const cut = line.indexOf('//')
+    if (cut === -1) continue
+    const expr = line.slice(0, cut).trim()
+    // A declaration or a bare keyword line is not a claim, it is setup. `new Function('return
+    // (const x = …)')` is a syntax error, so these have to be filtered before evaluation.
+    if (
+      expr === '' ||
+      /^(import|export|const|let|var|function|return|if|for|\/\/)\b/u.test(expr)
+    ) {
+      continue
+    }
+    found.push({ file, line: i + 1, expr, expected: line.slice(cut + 2).trim() })
+  }
+  return found
+}
+
+/**
  * Is the stated answer a literal this script can compare against, or prose?
  * Prose is a legitimate answer for `day()`, which reads a clock.
  *
@@ -97,10 +142,17 @@ function literalOf(expected) {
   return /^(true|false)\b/u.exec(head)?.[1] ?? head
 }
 
-// A FLOOR, because a gate that can quietly find nothing is not a gate. Rename a file, reflow a
-// comment, or break the regex, and without this the run reports PASS over zero examples and exits
-// 0. The number only has to move when examples are deliberately added or removed.
-const FLOOR = 89
+// A CEILING on skips, not a floor on assertions, and the difference is maintenance. A floor fires
+// whenever an example is legitimately added or deleted, so it needs a bump for an ordinary edit.
+// What it is really there to catch is a DOWNGRADE: a literal quietly becoming prose, which moves a
+// tag from asserted to skipped while the written total does not change — so the accounting check
+// above cannot see it. A ceiling catches that, and stays correct when examples are added or
+// removed. It only moves when a claim genuinely becomes uncheckable, which needs a reason.
+// 25 today, and the number is only allowed to move with a reason. The current skips are three
+// honest classes: a clock-dependent answer that cannot be a literal (`day()` and friends), an
+// expression naming a variable the reader has and the probe does not, and a README line whose
+// comment is deliberately prose. Raising this without naming a new class is how the gate rots.
+const SKIP_CEILING = 25
 
 let asserted = 0
 const skipped = []
@@ -119,22 +171,21 @@ for (const file of FILES) {
   const text = readFileSync(new URL(`../${file}`, import.meta.url), 'utf8')
   onDisk[file] = (text.match(/@example/gu) ?? []).length
 }
+for (const file of PROSE_FILES) onDisk[file] = collectFenced(file).length
 
-for (const file of FILES) {
-  for (const ex of collect(file)) {
+const work = [
+  ...FILES.flatMap((f) => collect(f)),
+  ...PROSE_FILES.flatMap((f) => collectFenced(f)),
+]
+
+{
+  for (const ex of work) {
     const where = `${ex.file}:${ex.line}`
     if (ex.expected === null) {
       unaccounted++
       failures.push(
         `${where}  ${ex.expr}\n    has no // answer, so nothing can be checked`,
       )
-      continue
-    }
-    // The caller-variable test runs FIRST, so the skip reason names the real cause. Ordered the
-    // other way it is unreachable, because every such example happens to carry prose today — and
-    // it would then mis-report the day a literal one is written.
-    if (/\b(row|zdt)\b/u.test(ex.expr)) {
-      skipped.push(`${where}  ${ex.expr}  // ${ex.expected}  [needs a caller variable]`)
       continue
     }
     // literalOf before assertable, so trailing prose after a literal does not hide the literal.
@@ -149,13 +200,29 @@ for (const file of FILES) {
     // written, or the check is of a paraphrase and not of the documentation. The input is this
     // repository's own committed source comments, never caller data, and this script is a dev
     // gate that ships in no tarball — `package.json:files` lists index.js, index.d.ts and README.
-    const run = new Function(...Object.keys(scope), `return (${ex.expr})`)
+    let run
+    try {
+      run = new Function(...Object.keys(scope), `return (${ex.expr})`)
+    } catch (err) {
+      // A gate must never die on one bad input. `new Function` throws while COMPILING, which is
+      // outside the evaluation try/catch below, so without this one malformed line takes the
+      // whole run down with a stack trace and no report.
+      asserted++
+      failures.push(`${where}  ${ex.expr}\n    is not a valid expression: ${err.message}`)
+      continue
+    }
     if (thrown !== null) {
       let raised = null
       try {
         run(...Object.values(scope))
       } catch (err) {
         raised = err
+      }
+      if (raised instanceof ReferenceError) {
+        skipped.push(
+          `${where}  ${ex.expr}  // ${ex.expected}  [needs ${raised.message.replace(' is not defined', '')}]`,
+        )
+        continue
       }
       asserted++
       if (raised === null) {
@@ -174,6 +241,17 @@ for (const file of FILES) {
     try {
       got = run(...Object.values(scope))
     } catch (err) {
+      // An example may legitimately name a variable the reader has and the probe does not —
+      // `day(row.createdAt)`, or a `const` from an earlier line of the same fenced block. An
+      // unbound identifier throws a ReferenceError that names itself, which is a far better test
+      // than the list of identifiers this used to carry: that list only knew the names I had
+      // happened to write, and README examples introduced three more the day it was extended.
+      if (err instanceof ReferenceError) {
+        skipped.push(
+          `${where}  ${ex.expr}  // ${ex.expected}  [needs ${err.message.replace(' is not defined', '')}]`,
+        )
+        continue
+      }
       asserted++
       failures.push(`${where}  ${ex.expr}\n    expected ${want}, threw ${err.message}`)
       continue
@@ -208,11 +286,11 @@ if (bucketed !== written) {
   )
 }
 
-if (asserted < FLOOR) {
+if (skipped.length > SKIP_CEILING) {
   failures.push(
-    `only ${asserted} examples were asserted, and the floor is ${FLOOR}\n` +
-      `    Either examples were removed on purpose — then lower FLOOR in this file — or the\n` +
-      `    collector stopped finding them, which is this gate silently disarming itself.`,
+    `${skipped.length} claims are unassertable and the ceiling is ${SKIP_CEILING}\n` +
+      `    A claim moved from checked to unchecked. Either a literal became prose — put it back —\n` +
+      `    or it genuinely cannot be asserted, and then raise SKIP_CEILING with the reason.`,
   )
 }
 
