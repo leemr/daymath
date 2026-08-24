@@ -365,9 +365,15 @@ describe('day() — the one export that reads a clock', () => {
         return true
       },
     )
-    // It fires before the zone itself is judged, because the argument pair is
-    // wrong whatever the zone says.
-    assert.throws(() => dm.day('2026-08-08T12:00', 'Bad/Zone'), TypeError)
+    // It fires AFTER the zone and the value are judged, so a mistyped zone still
+    // reports the zone whatever the moment is — the same message a bare day
+    // draws. That is the point of the ordering: the guard is about the argument
+    // PAIR, so it must never pre-empt a fault in either argument alone.
+    assert.throws(
+      () => dm.day('2026-08-08T12:00', 'Bad/Zone'),
+      /unknown time zone "Bad\/Zone"/,
+    )
+    assert.throws(() => dm.day('2026-05-05', 'Bad/Zone'), /unknown time zone "Bad\/Zone"/)
 
     // Only that pair. A bare day plus a zone still answers, because nothing was
     // discarded there, and this is the behaviour the refusal must not disturb.
@@ -388,7 +394,11 @@ describe('day() — the one export that reads a clock', () => {
     )
     // A clock that could change the date is not a day at all, in day() either.
     assert.throws(() => dm.day('2026-08-08 24:00:00'), /neither a moment nor a time zone/)
-    assert.throws(() => dm.day('2026-08-08 23:59:60'), /neither a moment nor a time zone/)
+    // The value is judged before the argument pair, so a day that does not exist
+    // reports itself and not the zone. Putting the guard above the parse broke
+    // this and blamed the zone for a bad stored day.
+    assert.throws(() => dm.day('2026-02-30 12:00:00', 'utc'), /invalid date/)
+    assert.throws(() => dm.day('+275760-09-14 12:00:00', 'utc'), /invalid date/)
   })
 
   it('refuses a string that is neither a moment nor a zone', () => {
@@ -514,12 +524,21 @@ describe('parse / format / isValid', () => {
     // datetime('now','subsec') add three fractional digits.
     assert.equal(parse('2026-08-08 12:00:00'), '2026-08-08')
     assert.equal(parse('2026-08-08 01:57:31.913'), '2026-08-08')
-    // The `T` is the same fact with different punctuation, so it comes too.
-    // Temporal treats the two separators identically, and daymath already
-    // accepted the space on every zoned form, so refusing one spelling here
-    // would make the rule about punctuation instead of about information.
+    // All three separators, because the separator is punctuation and never
+    // information. Temporal treats `T`, `t` and a space identically, and daymath
+    // already accepted every one of them on the ZONED forms, so refusing any of
+    // them here would have left the same gap the change exists to close.
     assert.equal(parse('2026-08-08T12:00:00'), '2026-08-08')
     assert.equal(parse('2026-08-08T12:00'), '2026-08-08')
+    assert.equal(parse('2026-08-08t12:00:00'), '2026-08-08')
+    assert.equal(dm.day('2026-08-08t12:00'), '2026-08-08')
+    // A leap second and a fraction of any length both stay inside their own day,
+    // so the rule accepts them. `day('…23:59:60Z')` already answered on the
+    // instant path, where Temporal clamps to :59, so refusing the zoneless twin
+    // would have been the separator gap again on a different field.
+    assert.equal(parse('2026-08-08 23:59:60'), '2026-08-08')
+    assert.equal(dm.day('2026-08-08 23:59:60'), dm.day('2026-08-08 23:59:60Z'))
+    assert.equal(parse('2026-08-08 12:00:00.1234567890'), '2026-08-08')
     // It lands in bareDay, the funnel all 69 exports share, so this is not a
     // parse() feature. The clock never reaches an answer.
     assert.equal(addDays('2026-08-08 12:00:00', 1), '2026-08-09')
@@ -542,16 +561,13 @@ describe('parse / format / isValid', () => {
   })
 
   it('refuses a clock that could change the date, or is not a clock', () => {
-    // The rule, and the reason the hour stops at 23: daymath drops a clock only
-    // when the clock cannot change the date. ISO 24:00 is midnight starting the
-    // NEXT day, so dropping it would answer the day before. SQLite accepts
-    // 24:00:00 and echoes it back unchanged; Temporal refuses it. daymath
-    // refuses it, so no caller gets an off-by-one day out of a stored value.
+    // The rule, and the only bound in the pattern: the hour is the only field
+    // that can change the date. ISO 24:00 is midnight starting the NEXT day, so
+    // dropping it would answer the day before. SQLite accepts 24:00:00 and
+    // echoes it back unchanged; Temporal refuses it. daymath refuses it, so no
+    // caller gets an off-by-one day out of a stored value.
     assert.throws(() => parse('2026-08-08 24:00:00'), /ISO 8601/)
     assert.throws(() => parse('2026-08-08 25:00:00'), /ISO 8601/)
-    // 23:59:60 is a value SQLite refuses to store and Temporal silently clamps
-    // to 23:59:59, so shape settles it here rather than letting either decide.
-    assert.throws(() => parse('2026-08-08 23:59:60'), /ISO 8601/)
     for (const bad of [
       '2026-08-08 12', // an hour alone is not a clock
       '2026-08-08 12:', // nor a bare colon

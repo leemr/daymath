@@ -72,7 +72,6 @@ convert from — and `datetime()` defaults to UTC, so a silent answer would hand
 UTC day to the one caller who asked for a local one. Put the zone in the string
 (`Z`, an offset, or `[Zone]`) and it converts normally.
 
-
 Name a zone when the answer depends on one.
 
 ```js
@@ -102,10 +101,11 @@ Six rules worth knowing:
   the UTC default never applies. `day(zdt.toString())` equals `zdt.toPlainDate()`.
   A browser sending `'2026-08-08T20:00:00-04:00[America/New_York]'` gets back the
   8th, which is the date its user saw. Passing `tz` as well throws.
-- A **zoneless wall clock is a day.** `'2026-08-08 12:00:00'` and
-  `'2026-08-08T12:00'` both answer `'2026-08-08'`; the clock is dropped, never read.
-  Pass `tz` with one and it **throws** — naming a zone means convert, and a clock
-  with no zone gives nothing to convert from. Name the zone in the string —
+- A **zoneless wall clock is a day.** `'2026-08-08 12:00:00'`, `'2026-08-08T12:00'`
+  and the lowercase `t` all answer `'2026-08-08'`; the clock is dropped, never read.
+  The **hour is the only bound**, because the hour is the only field that can change
+  the date: `24:00` is refused, a leap second and a fraction of any length are not.
+  Pass `tz` with one and it **throws**. Name the zone in the string —
   `'2026-08-08T12:00[America/New_York]'` — and it converts.
 - **`'11/12/2026'` is refused.** Nobody can tell November from December in it.
 

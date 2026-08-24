@@ -144,6 +144,9 @@ const WALL_CLOCKS = [
   '2026-08-08 01:57:31.913', // strftime('%Y-%m-%d %H:%M:%f'), and datetime('now','subsec')
   '2026-08-08T12:00:00', // the ISO twin, with seconds
   '2026-08-08T12:00', // the ISO twin, minutes only
+  '2026-08-08t12:00:00', // the lowercase separator, which Temporal also accepts
+  '2026-08-08 23:59:60', // a leap second stays inside its own day, so it is accepted
+  '2026-08-08 12:00:00.1234567890', // a fraction longer than Temporal itself takes
   '+010000-01-01 12:00:00', // an expanded year, so the day half of the pattern is covered
   '2026-01-31 12:00:00[u-ca=buddhist]', // the clock comes off, the calendar rides on
 ]
@@ -161,10 +164,9 @@ const JUNK = [
   '', // empty
   '11/12/2026', // November or December, unknowable
   '2026-08-08 24:00:00', // ISO 24:00 starts the NEXT day, so the clock is not droppable
-  '2026-08-08 25:00:00', // hour 25, which SQLite refuses too
-  '2026-08-08 23:59:60', // SQLite refuses this and Temporal clamps it, so shape settles it
+  '2026-08-08 25:00:00', // hour 25: the same bound from outside the boundary
   '2026-08-08 12:00:00 ', // a trailing space: the pattern is anchored
-  '2026-08-08x12:00:00', // some separator that is neither a space nor a T
+  '2026-08-08x12:00:00', // a separator that is not T, t or a space
   '12:30:00', // a time alone
   '2026-08-08T25:00:00Z', // hour 25
   '2026-13-01', // month 13

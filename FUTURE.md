@@ -235,8 +235,14 @@ experiments, and only an A/B made inside one run is evidence.
 
   ```js
   addBusinessDays('2026-08-07', 3, { holidays: ['2026-08-10'] })
-  // '2026-08-12'
+  // '2026-08-13'
   ```
+
+  **The number in that example is measured, and the obvious guess is wrong.** 2026-08-07 is a
+  Friday, and date-fns 4.4.0 answers `2026-08-12` for `addBusinessDays(d, 3)` with NO holidays
+  (Mon 10, Tue 11, Wed 12). Excluding Monday the 10th must therefore push it to `2026-08-13`. An
+  earlier draft of this row said `2026-08-12`, which is the no-holiday answer, so the `holidays`
+  argument appeared to do nothing — the opposite of the point. Run it before writing the test.
 
   `weekend` defaults to `[6, 7]`. `holidays` is a day list, or a `string => boolean`. Both, because a Gulf clinic, an exchange, and a tour operator each own a different closed set. **Do not bake US federal holidays into the library.** A helper that only skips Saturday and Sunday is a US office library, not a field-universal one.
 - Rich display / i18n — **out of scope** (Temporal+Intl or date-fns TZ formatters)
