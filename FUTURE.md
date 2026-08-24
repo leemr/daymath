@@ -3,7 +3,7 @@
 Checked-in backlog. Session handoff: local `./todo`, which is untracked and NOT gitignored — the
 `??` line in `git status` is the point, so a stale handoff stays visible.
 
-**Live now:** `daymath@0.6.0` on npmjs · `@leemr/daymath@0.6.0` on GitHub Packages · https://leemr.github.io/daymath/
+**Live now:** `daymath@0.7.0` on npmjs · `@leemr/daymath@0.7.0` on GitHub Packages · https://leemr.github.io/daymath/
 
 ---
 
@@ -34,7 +34,13 @@ does **not** catch the other: a heading placed above the wrong bullets, correctl
 semantic and no linter reads it. Four rules must be off or the noise buries the signal — `MD013`
 (line length, which would mean reflowing prose), `MD024` (this changelog repeats `### Changed` on
 purpose), `MD034` (bare URLs are deliberate here) and `MD033`. With those off, all five `.md` files
-report zero today. Use the linter, never a formatter: a formatter reflows, and that is not wanted.
+report zero today.
+
+**Do NOT take the cheap option, and this is the trap.** daymath already depends on a formatter that
+handles Markdown: `npx oxfmt -c oxfmt.json --check ./*.md` reports issues in all five files today.
+The `format` script excludes `*.md` on purpose. Adding them to that glob costs no new dependency and
+would immediately reflow all five — pad every table column and insert blank lines between adjacent
+headings. Use a linter, which reports; never a formatter, which rewrites.
 
 **Row 1 is not free of a release, and the old label saying so was wrong.** `README.md` is one of the
 five files in the npm tarball, so repointing the badge markup leaves npmjs serving the old badge
