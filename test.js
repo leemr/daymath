@@ -339,12 +339,70 @@ describe('day() — the one export that reads a clock', () => {
     assert.equal(dm.day('Etc/GMT+5'), dm.day(undefined, 'Etc/GMT+5'))
   })
 
+  it('takes a zoneless wall clock as a day, and refuses to convert one', () => {
+    // The day path, so the answer is the date part and no clock is read.
+    assert.equal(dm.day('2026-08-08 12:00:00'), '2026-08-08')
+    assert.equal(dm.day('2026-08-08 01:57:31.913'), '2026-08-08')
+    assert.equal(dm.day('2026-08-08T12:00'), '2026-08-08')
+    // day() is the normaliser, so it drops the annotation the other 68 carry.
+    assert.equal(dm.day('2026-08-08 12:00:00[u-ca=buddhist]'), '2026-08-08')
+    // `null` means no zone was given, exactly as it does for the bracket rule.
+    assert.equal(dm.day('2026-08-08 12:00:00', null), '2026-08-08')
+
+    // The refusal, and the whole reason it exists. Measured on SQLite 3.54.0 on
+    // 2026-08-24: datetime('now') is 2026-08-24 01:57:31 and
+    // datetime('now','localtime') is 2026-08-23 21:57:31 — DIFFERENT days.
+    // datetime() defaults to UTC, so a caller who stores the default and asks
+    // for a local day is exactly the caller a silent answer would mislead.
+    assert.throws(
+      () => dm.day('2026-08-08 12:00:00', 'Asia/Tokyo'),
+      (err) => {
+        assert.ok(err instanceof TypeError)
+        assert.equal(
+          err.message,
+          'daymath: day() cannot apply the zone "Asia/Tokyo" to "2026-08-08 12:00:00", because that clock names no zone (add Z or an offset to it, or drop the zone)',
+        )
+        return true
+      },
+    )
+    // It fires AFTER the zone is judged, so a mistyped zone reports the zone
+    // whatever the moment is. The bare-day pair below is the contrast that makes
+    // that legible: same zone fault, same message, clock or no clock.
+    assert.throws(
+      () => dm.day('2026-08-08T12:00', 'Bad/Zone'),
+      /unknown time zone "Bad\/Zone"/,
+    )
+    assert.throws(() => dm.day('2026-05-05', 'Bad/Zone'), /unknown time zone "Bad\/Zone"/)
+
+    // Only that pair. A bare day plus a zone still answers, because nothing was
+    // discarded there, and this is the behaviour the refusal must not disturb.
+    assert.equal(dm.day('2026-08-08', 'Asia/Tokyo'), '2026-08-08')
+    assert.equal(dm.day('2026-08-08[u-ca=buddhist]', 'Asia/Tokyo'), '2026-08-08')
+
+    // And a clock that DOES name a zone still converts, which is the point of
+    // separating the two. These three answered before this change and must keep
+    // answering: the space separator was never the gap.
+    assert.equal(dm.day('2026-08-08 20:00:00Z', 'Asia/Tokyo'), '2026-08-09')
+    assert.equal(dm.day('2026-08-08 20:00:00Z'), '2026-08-08')
+    assert.equal(dm.day('2026-08-08 12:00:00+05:30'), '2026-08-08')
+    assert.equal(dm.day('2026-08-08 12:00:00[America/New_York]'), '2026-08-08')
+    // A zone bracket plus tz is still the older, separate refusal.
+    assert.throws(
+      () => dm.day('2026-08-08 12:00:00[America/New_York]', 'Asia/Tokyo'),
+      /two time zones/,
+    )
+    // A clock that could change the date is not a day at all, in day() either.
+    assert.throws(() => dm.day('2026-08-08 24:00:00'), /neither a moment nor a time zone/)
+    // The value is judged before the argument pair, so a day that does not exist
+    // reports itself and not the zone.
+    assert.throws(() => dm.day('2026-02-30 12:00:00', 'utc'), /invalid date/)
+  })
+
   it('refuses a string that is neither a moment nor a zone', () => {
     // Temporal's zone grammar accepts a whole timestamp and pulls the zone out
     // of it. Letting it pick the role read a date as a zone and answered today.
     for (const bad of [
       '11/12/2026', // nobody can tell November from December in this
-      '2026-08-08T12:00', // no offset and no zone, so daymath would have to pick
       '2026-W32-5',
       '12:30:00',
       '2026-08-08T25:00:00Z', // hour 25
@@ -452,10 +510,70 @@ describe('parse / format / isValid', () => {
     assert.throws(() => parse(new Date(d)), /Date is not allowed/)
   })
 
-  it('rejects time / sloppy strings', () => {
-    assert.throws(() => parse('2026-08-06T12:00:00'), /ISO 8601/)
+  it('rejects sloppy strings', () => {
     assert.throws(() => parse('2026-8-6'), /ISO 8601/)
     assert.throws(() => parse('08/06/2026'), /ISO 8601/)
+  })
+
+  it('drops a zoneless wall clock, so a SQLite DATETIME needs no reshaping', () => {
+    // Every shape SQLite 3.54.0 emits, measured: datetime('now') and
+    // CURRENT_TIMESTAMP give seconds, strftime('%Y-%m-%d %H:%M:%f') and
+    // datetime('now','subsec') add three fractional digits.
+    assert.equal(parse('2026-08-08 12:00:00'), '2026-08-08')
+    assert.equal(parse('2026-08-08 01:57:31.913'), '2026-08-08')
+    // All three separators. The rule and the reason are on ISO_DAY_TIME.
+    assert.equal(parse('2026-08-08T12:00:00'), '2026-08-08')
+    assert.equal(parse('2026-08-08T12:00'), '2026-08-08')
+    assert.equal(parse('2026-08-08t12:00:00'), '2026-08-08')
+    assert.equal(dm.day('2026-08-08t12:00'), '2026-08-08')
+    // A leap second and a fraction of any length stay inside their own day, so
+    // the rule accepts them. The equality below is the point: the zoneless form
+    // must answer what the `Z` form already answered.
+    assert.equal(parse('2026-08-08 23:59:60'), '2026-08-08')
+    assert.equal(dm.day('2026-08-08 23:59:60'), dm.day('2026-08-08 23:59:60Z'))
+    assert.equal(parse('2026-08-08 12:00:00.1234567890'), '2026-08-08')
+    // It lands in bareDay, the funnel all 69 exports share, so this is not a
+    // parse() feature. The clock never reaches an answer.
+    assert.equal(addDays('2026-08-08 12:00:00', 1), '2026-08-09')
+    assert.equal(startOfMonth('2026-08-08 12:00:00'), '2026-08-01')
+    assert.equal(differenceInDays('2026-08-09 00:00:00', '2026-08-08 23:59:59'), 1)
+    assert.equal(isValid('2026-08-08 12:00:00'), true)
+    assert.equal(format('2026-08-08 12:00:00'), '2026-08-08')
+    // Expanded years keep working, because the day half of the pattern is the
+    // same alternation ISO_DAY uses.
+    assert.equal(parse('+010000-01-01 12:00:00'), '+010000-01-01')
+    assert.equal(parse('-000001-01-01T00:00'), '-000001-01-01')
+    // A clock is dropped while a calendar annotation rides along, and the two
+    // are not inconsistent: an annotation renumbers the fields daymath answers
+    // with, a clock names a field it does not have.
+    assert.equal(getYear('2026-01-31 12:00:00[u-ca=buddhist]'), 2569)
+    assert.equal(
+      addDays('2026-01-31 12:00:00[u-ca=buddhist]', 1),
+      '2026-02-01[u-ca=buddhist]',
+    )
+  })
+
+  it('refuses a clock that could change the date, or is not a clock', () => {
+    // The rule, and the only bound in the pattern: the hour is the only field
+    // that can change the date. ISO 24:00 is midnight starting the NEXT day, so
+    // dropping it would answer the day before. SQLite accepts 24:00:00 and
+    // echoes it back unchanged; Temporal refuses it. daymath refuses it, so no
+    // caller gets an off-by-one day out of a stored value.
+    assert.throws(() => parse('2026-08-08 24:00:00'), /ISO 8601/)
+    assert.throws(() => parse('2026-08-08 25:00:00'), /ISO 8601/)
+    for (const bad of [
+      '2026-08-08 12', // an hour alone is not a clock
+      '2026-08-08 12:', // nor a bare colon
+      '2026-08-08 12:00:00.', // a fraction point with no digits
+      '2026-08-08  12:00:00', // two separators
+      '2026-08-08 12:00:00 ', // a trailing space
+      '2026-08-08x12:00:00', // some other separator
+      '2026-08-08 12:00:00Z', // names an instant, so parse() must not take it
+      '2026-08-08 12:00:00+05:30', // likewise an offset
+      '2026-08-08 12:00:00[America/New_York]', // and a zone bracket
+    ]) {
+      assert.throws(() => parse(bad), /ISO 8601/, `parse(${JSON.stringify(bad)})`)
+    }
   })
 
   it('rejects impossible calendar days', () => {

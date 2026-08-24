@@ -132,6 +132,25 @@ const INSTANTS = [
   '+275760-09-13T00:00:00Z', // the highest
 ]
 
+// Day spellings that carry a zoneless wall clock. daymath drops the clock, so every export here
+// must answer exactly what it answers for the bare day.
+//
+// Probed WITH a second argument on purpose, and that is why this is not folded into DATES: 68
+// exports ignore it, and `day()` alone throws, because a clock naming no zone gives it nothing to
+// convert from. Only a cross-runtime hash proves that refusal is daymath's decision rather than a
+// Temporal parse difference between the native and shim funcApi.
+const WALL_CLOCKS = [
+  '2026-08-08 12:00:00', // SQLite datetime() and CURRENT_TIMESTAMP
+  '2026-08-08 01:57:31.913', // strftime('%Y-%m-%d %H:%M:%f'), and datetime('now','subsec')
+  '2026-08-08T12:00:00', // the T separator, with seconds
+  '2026-08-08T12:00', // the T separator, minutes only
+  '2026-08-08t12:00:00', // the lowercase separator, which Temporal also accepts
+  '2026-08-08 23:59:60', // a leap second stays inside its own day, so it is accepted
+  '2026-08-08 12:00:00.1234567890', // a fraction longer than Temporal itself takes
+  '+010000-01-01 12:00:00', // an expanded year, so the day half of the pattern is covered
+  '2026-01-31 12:00:00[u-ca=buddhist]', // the clock comes off, the calendar rides on
+]
+
 // Strings that must be refused. Every export throws on every entry where it
 // actually reads the value — first argument, or inside an interval. In the
 // second-argument slot 28 exports ignore the extra argument and answer normally,
@@ -144,8 +163,10 @@ const INSTANTS = [
 const JUNK = [
   '', // empty
   '11/12/2026', // November or December, unknowable
-  '2026-08-08 12:00:00', // SQL DATETIME: a space, not a T
-  '2026-08-08T12:00', // a time, but no offset, so no instant
+  '2026-08-08 24:00:00', // ISO 24:00 starts the NEXT day, so the clock is not droppable
+  '2026-08-08 25:00:00', // hour 25: the same bound from outside the boundary
+  '2026-08-08 12:00:00 ', // a trailing space: the pattern is anchored
+  '2026-08-08x12:00:00', // a separator that is not T, t or a space
   '12:30:00', // a time alone
   '2026-08-08T25:00:00Z', // hour 25
   '2026-13-01', // month 13
@@ -253,6 +274,20 @@ export function run(dm, PlainDate) {
       rows.push(
         outcome(() => fn(t, 'Asia/Tokyo')),
         outcome(() => fn(t, 'America/New_York')),
+      )
+    }
+    for (const w of WALL_CLOCKS) {
+      rows.push(
+        outcome(() => fn(w)),
+        outcome(() => fn(w, 'utc')),
+      )
+      rows.push(
+        outcome(() => fn(w, 'Asia/Tokyo')),
+        outcome(() => fn(w, 1)),
+      )
+      rows.push(
+        outcome(() => fn(w, '2026-08-06')),
+        outcome(() => fn({ start: w, end: '2026-08-09' })),
       )
     }
     for (const j of JUNK) {

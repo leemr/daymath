@@ -1,10 +1,10 @@
 {
   "//": "Committed size baseline. Regenerate deliberately: npm run size:write",
-  "esbuild": "0.28.1",
+  "esbuild": "0.28.2",
   "gzipLevel": "Z_BEST_COMPRESSION",
   "gated": {
-    "A": 16295,
-    "B": 21550,
-    "F": 19349
+    "A": 16432,
+    "B": 21762,
+    "F": 19568
   }
 }

@@ -56,6 +56,45 @@ const RUNTIME_CALENDARS = new Set(
 const ISO_DAY = /^(?:[+-]\d{6}|\d{4})-\d{2}-\d{2}$/u
 
 /**
+ * A day with a wall clock and no zone: `YYYY-MM-DD HH:MM[:SS[.fff]]`, with `T`,
+ * `t` or a space between them. Group 1 is the day. The clock gets dropped.
+ *
+ * This is what SQLite hands you — `datetime('now')`, `CURRENT_TIMESTAMP` and
+ * `strftime('%Y-%m-%d %H:%M:%f')` all emit a space, seconds and optional
+ * fractions — so a column value needs no reshaping before daymath reads it.
+ *
+ * **All three separators, because a separator is punctuation and never
+ * information.** Temporal accepts a space and a lowercase `t` wherever it accepts
+ * `T`, and the ZONED forms of all three already answered, so the only hole was a
+ * clock naming NO zone.
+ *
+ * **The hour is the only bound, because the hour is the only field that can
+ * change the date. That is the whole rule: daymath drops a clock only when the
+ * clock cannot move the day.** A leap second and a fraction of any length stay
+ * inside their own day, so both are accepted, matching what `day('…23:59:60Z')`
+ * already answered.
+ *
+ * **`24:00` is refused, and the reason is that SQLite disagrees with itself
+ * about it.** ISO `24:00` is midnight starting the NEXT day, and SQLite's own
+ * `julianday('2026-08-08 24:00:00')` is 2461261.5 — byte-identical to
+ * `julianday('2026-08-09 00:00:00')` — while its `date()` and
+ * `strftime('%Y-%m-%d')` on the same string both answer `'2026-08-08'`. So no
+ * answer daymath could give agrees with the database: the 9th contradicts its
+ * `date()`, the 8th contradicts its `julianday()`. Refusing is the only option
+ * that never silently disagrees. Temporal refuses `24:00` on every path too, so
+ * accepting would also mean doing carry arithmetic the engine will not do.
+ *
+ * That also separates it from the two cases above. `t` and `:60` were holes
+ * because the ZONED twin already answered; every `24:00` spelling is refused
+ * today, zoned and zoneless, so refusing it is the consistent choice.
+ *
+ * `Z`, an offset and a `[Zone]` cannot reach this pattern — it is anchored — so
+ * a string that names a real instant still takes the instant path in `day()`.
+ */
+const ISO_DAY_TIME =
+  /^((?:[+-]\d{6}|\d{4})-\d{2}-\d{2})[Tt ](?:[01]\d|2[0-3]):[0-5]\d(?::(?:[0-5]\d|60)(?:\.\d+)?)?$/u
+
+/**
  * Temporal's calendar annotation, `[u-ca=…]` or the critical `[!u-ca=…]`.
  * Returns what it is attached to, and the calendar it names, or `null`.
  *
@@ -153,13 +192,19 @@ const ZONE_LIKE =
  * One predicate, because `toPlainDate` and `day()` both ask this question. They
  * asked it separately once, and day() alone then refused a string that every
  * other export accepted.
+ *
+ * `clock` reports whether a zoneless wall clock came off the string. Every export ignores it and
+ * answers the same day either way; only `day()` reads it, because `day()` is the only one that
+ * takes a zone and so the only one that can be asked to convert what it just discarded.
  * @param {string} text
- * @returns {string | null}
+ * @returns {{ day: string, clock: boolean } | null}
  */
 function bareDay(text) {
   const annotated = calendarAnnotation(text)
   const bare = annotated ? annotated.head : text
-  return ISO_DAY.test(bare) ? bare : null
+  if (ISO_DAY.test(bare)) return { day: bare, clock: false }
+  const clocked = ISO_DAY_TIME.exec(bare)
+  return clocked === null ? null : { day: clocked[1], clock: true }
 }
 
 /**
@@ -341,14 +386,15 @@ function toPlainDate(value, label = 'date') {
   const bare = bareDay(text)
   if (bare === null) {
     throw new RangeError(
-      `daymath: ${label} must be ISO 8601 day YYYY-MM-DD or ±YYYYYY-MM-DD (got ${JSON.stringify(text)})`,
+      `daymath: ${label} must be ISO 8601 day YYYY-MM-DD or ±YYYYYY-MM-DD, optionally with a zoneless clock HH:MM[:SS[.fff]] after a T, t or space, where only the hour is bounded (00-23) (got ${JSON.stringify(text)})`,
     )
   }
   try {
     // The bare day is parsed with the ISO resolver's own entry point. `getAny` is passed as the
     // resolver rather than called, because `fromString` calls it with whatever the string names,
-    // and a bare day names nothing.
-    const plain = PlainDateFns.fromString(bare, getAny)
+    // and a bare day names nothing. A wall clock is already off the string by this line, so no
+    // export ever parses one and every answer stays a day.
+    const plain = PlainDateFns.fromString(bare.day, getAny)
     // The annotation rides along, so getYear answers 2569 for a Buddhist day and every
     // returned string keeps the calendar the caller named.
     return calendar === undefined
@@ -502,6 +548,9 @@ function toInterval(interval) {
  *   truncated the same way, so a fractional value is not an error
  * - an ISO 8601 day string, or a `Temporal.PlainDate` from any implementation,
  *   both of which are already a day
+ * - a day carrying a zoneless wall clock, `'YYYY-MM-DD HH:MM[:SS[.fff]]'`, with
+ *   `T`, `t` or a space between them: a day with noise on it, and the clock is
+ *   dropped. Only the hour is bounded, at 00-23
  * - an ISO 8601 timestamp carrying `Z` or an offset, which names an exact
  *   instant, so there is nothing left to guess
  * - a string carrying a `[Zone]` annotation, which names its own zone, so it
@@ -518,9 +567,15 @@ function toInterval(interval) {
  * ways in one function.
  *
  * `'11/12/2026'` is refused. Nobody can tell November from December in it.
- * `'2026-08-08T12:00'` is refused too: no offset and no zone, so daymath would
- * have to pick one, and it will not pick on the caller's behalf. Name the zone
- * — `'2026-08-08T12:00[America/New_York]'` — and it is accepted.
+ *
+ * A **zoneless wall clock is a day**, so `'2026-08-08 12:00:00'` and
+ * `'2026-08-08T12:00'` both answer `'2026-08-08'`. The clock is dropped, never
+ * read. That is what SQLite hands you from `datetime()` and `CURRENT_TIMESTAMP`,
+ * and it takes the day path here exactly as a bare day does.
+ *
+ * **Pass `tz` with one and it throws.** Naming a zone means convert, and a clock
+ * with no zone gives nothing to convert from. Name the zone in the string —
+ * `'2026-08-08T12:00[America/New_York]'`, or `Z`, or an offset — and it converts.
  *
  * A lone string takes one of four roles, decided in this order: a day, then a
  * zoned time, then an instant, then a zone. The zone test is by **shape**, and
@@ -550,13 +605,15 @@ function toInterval(interval) {
  * @example day(1761616161771)                 // '2025-10-28'  epoch ms
  * @example day('1999-01-01T00:00:00Z')        // '1999-01-01'  an ISO timestamp
  * @example day(zdt.toString())                // the zone in the string wins
+ * @example day(row.created_at)                // '2026-08-08'  a SQLite DATETIME
+ * @example day('2026-08-08 12:00:00', 'utc')  // throws: the clock names no zone
  * @example addDays(day(), 2)                  // '2026-08-10'
  */
 export function day(moment, tz) {
   // Already a day, in every accepted spelling. `bareDay` is the same predicate
   // toPlainDate uses, so day() cannot drift from the other 68 exports.
-  const isDay =
-    isPlainDate(moment) || (typeof moment === 'string' && bareDay(moment) !== null)
+  const bare = typeof moment === 'string' ? bareDay(moment) : null
+  const isDay = isPlainDate(moment) || bare !== null
   const isMoment = isDay || moment instanceof Date || typeof moment === 'number'
 
   let zone = tz
@@ -672,7 +729,25 @@ export function day(moment, tz) {
   // plain ISO day comes out. Carrying it here also could not be made
   // consistent, because an `Instant` has no fields for a calendar to renumber,
   // so that path has nothing to carry and would answer bare ISO regardless.
-  if (isDay) return toDayString(isoOf(toPlainDate(moment)))
+  if (isDay) {
+    // The value is judged FIRST, so a day that does not exist reports itself rather than the zone.
+    // The guard below is about the argument PAIR, so it must never pre-empt a fault in either half.
+    const answer = toDayString(isoOf(toPlainDate(moment)))
+    // The one argument pair daymath refuses rather than answers. On 2026-08-24 SQLite's
+    // `datetime('now')` read 2026-08-24 01:57:31 and `datetime('now','localtime')` read
+    // 2026-08-23 21:57:31 — different days — because `datetime()` defaults to UTC. So the caller
+    // who stores the default and asks for a local day is the one a silent answer would mislead.
+    //
+    // Only this pair. A bare day plus a zone still answers, because no information was discarded
+    // there. Sibling of the `two time zones` refusals above, which a wall clock never reaches:
+    // both of those sit inside `if (!isMoment …)`.
+    if (bare?.clock && tz !== undefined && tz !== null) {
+      throw new TypeError(
+        `daymath: day() cannot apply the zone ${JSON.stringify(tz)} to ${JSON.stringify(moment)}, because that clock names no zone (add Z or an offset to it, or drop the zone)`,
+      )
+    }
+    return answer
+  }
 
   // The string named its own zone, so that zone decides the day, not the
   // default. This is the one path where `zone` is deliberately not consulted.

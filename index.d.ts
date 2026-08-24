@@ -4,6 +4,17 @@ import type { Temporal } from 'temporal-polyfill'
  * Calendar day input: ISO 8601 day string, or a Temporal.PlainDate.
  * - `YYYY-MM-DD` (years 0000–9999)
  * - expanded `±YYYYYY-MM-DD` (e.g. `+010000-01-01`)
+ * - either of those with a zoneless wall clock on it, `YYYY-MM-DD HH:MM[:SS[.fff]]`,
+ *   with `T`, `t` or a space between them. The clock is dropped and never read, so
+ *   `getYear('2026-08-08 12:00:00')` is `2026`. This is the shape SQLite stores:
+ *   `datetime()`, `CURRENT_TIMESTAMP` and `strftime('%Y-%m-%d %H:%M:%f')` all emit
+ *   it, so a column value needs no reshaping. The **hour is the only bound**,
+ *   because the hour is the only field that can change the date: `24:00` is refused
+ *   because ISO `24:00` starts the next day, while a leap second `23:59:60` and a
+ *   fraction of any length stay inside their own day and are accepted.
+ *
+ * A clock naming a zone — `Z`, an offset, or `[Zone]` — is NOT day input. It names
+ * an instant, and `day()` is the only door an instant enters by.
  *
  * Usable range is the Temporal `PlainDate` range `-271821-04-19` …
  * `+275760-09-13`; a day outside it throws a `RangeError`.
@@ -50,8 +61,12 @@ export type WeekOptions = {
  * own civil day and the UTC default never applies. Passing `tz` as well throws.
  *
  * `'11/12/2026'` is refused, because nobody can tell November from December in
- * it. `'2026-08-08T12:00'` is refused too: no offset and no zone, so daymath
- * would have to pick one. Name the zone and it is accepted.
+ * it.
+ *
+ * A zoneless wall clock is a day, so `'2026-08-08 12:00:00'` — a SQLite
+ * `DATETIME` — answers `'2026-08-08'` and the clock is dropped. Pass `tz` with
+ * one and it throws: naming a zone means convert, and a clock with no zone gives
+ * nothing to convert from. Put the zone in the string and it converts.
  *
  * A lone string takes one of four roles, in this order: a day, a zoned time, an
  * instant, then a zone. The zone test is by shape — an IANA name, which carries
