@@ -43,8 +43,8 @@ headings. Use a linter, which reports; never a formatter, which rewrites.
 
 **JSDoc examples are done and off this list.** It was row 6, and the row understated it:
 `index.d.ts` held ZERO `@example` blocks, and it is the only file an editor reads for docs.
-Every declaration that can carry one now does, and `npm run test:examples` executes every one and
-asserts its answer, so the class cannot rot silently again.
+Every declaration that can carry one now does, and `npm run test:examples` both ENFORCES that and
+asserts every answer, so the class cannot rot silently again.
 
 **Row 1 is not free of a release, and the old label saying so was wrong.** `README.md` is one of the
 five files in the npm tarball, so repointing the badge markup leaves npmjs serving the old badge
@@ -276,7 +276,7 @@ calendar surface is documented in `README.md`; the measurement is in `CHANGELOG.
 - Micro-bench only if honest and useful  
 
 **Done:** `examples/basic.mjs`, types, playground, 100% coverage, lint + format + type gates, and
-`@example` on every declaration that can carry one, with a gate that executes them  
+`@example` on every declaration that can carry one, with a gate that enforces and executes them  
 
 ---
 

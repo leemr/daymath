@@ -180,7 +180,11 @@ export function addQuarters(date: DayInput, amount: number): string
 /** Three months back, and it clamps. @example subQuarters('2026-04-30', 1) // '2026-01-30' */
 export function subQuarters(date: DayInput, amount: number): string
 
-/** Full year number. */
+/**
+ * Full year number. An annotation is applied on top of the ISO date part, never instead of it.
+ * @example getYear('2026-08-08') // 2026
+ * @example getYear('2026-01-31[u-ca=buddhist]') // 2569  the annotation adds 543
+ */
 export function getYear(date: DayInput): number
 /**
  * Month number, ISO 8601: 1 = January … 12 = December. Not date-fns's 0-based index.
@@ -188,7 +192,7 @@ export function getYear(date: DayInput): number
  * @example getMonth('2026-01-15') // 1
  */
 export function getMonth(date: DayInput): number
-/** Day of month 1…31. */
+/** Day of month 1…31. @example getDate('2026-08-08') // 8 */
 export function getDate(date: DayInput): number
 /**
  * Weekday, ISO 8601: 1 = Monday … 7 = Sunday. Only Sunday differs from date-fns.
@@ -200,7 +204,7 @@ export function getDay(date: DayInput): number
 export function getDayOfYear(date: DayInput): number
 /** @example getDaysInMonth('2024-02-10') // 29 */
 export function getDaysInMonth(date: DayInput): number
-/** Quarter 1…4. */
+/** Quarter 1…4. @example getQuarter('2026-08-08') // 3 */
 export function getQuarter(date: DayInput): number
 /**
  * Leap year of the day's own ISO year.
@@ -321,7 +325,10 @@ export function isAfter(date: DayInput, dateToCompare: DayInput): boolean
  * @example isEqual('2026-01-31[u-ca=buddhist]', '2026-01-31') // true  same day
  */
 export function isEqual(dateLeft: DayInput, dateRight: DayInput): boolean
-/** Alias of `isEqual` (date-fns name). */
+/**
+ * Alias of `isEqual` (date-fns name), and it ignores the calendar label the same way.
+ * @example isSameDay('2026-01-31[u-ca=buddhist]', '2026-01-31') // true  same day
+ */
 export const isSameDay: typeof isEqual
 
 /**
@@ -416,6 +423,8 @@ export function clamp(date: DayInput, interval: Interval): string
 /**
  * date-fns default: `inclusive: false` (touching endpoints only is not overlap).
  * Pass `{ inclusive: true }` for closed intervals.
+ * @example areIntervalsOverlapping({ start: '2026-08-01', end: '2026-08-08' }, { start: '2026-08-08', end: '2026-08-10' }) // false
+ * @example areIntervalsOverlapping({ start: '2026-08-01', end: '2026-08-08' }, { start: '2026-08-08', end: '2026-08-10' }, { inclusive: true }) // true
  */
 export function areIntervalsOverlapping(
   intervalLeft: Interval,

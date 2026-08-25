@@ -21,10 +21,11 @@
 // neither can be asserted. Every `@example` therefore lands in exactly one of three buckets —
 // asserted, skipped with a printed reason, or unaccounted — and unaccounted is a failure.
 //
-// Two guards stop the gate disarming itself, and both exist because it DID. The ACCOUNTING check
-// fails when a file reads back fewer claims than it has written. `SKIP_CEILING` catches the other
-// direction, a checked claim downgraded to prose, which the accounting cannot see because the
-// written total does not move. Each is documented where it is enforced.
+// Three guards stop the gate disarming itself, and each exists because it DID. The ACCOUNTING
+// check fails when a file reads back fewer claims than it has written. `SKIP_CEILING` catches the
+// other direction, a checked claim downgraded to prose, which the accounting cannot see because
+// the written total does not move. `NO_EXAMPLE_NEEDED` fails a declaration that carries no example
+// at all, because the release notes claim there are none. Each is documented where it is enforced.
 // Every behaviour here is proved by planting the defect, never assumed.
 //
 //   node scripts/examples.mjs
@@ -80,8 +81,9 @@ function collect(file) {
 /**
  * Pull `expression // expected` claims out of the ```js fences in a Markdown file.
  *
- * Only fenced `js` is read, so a ```bash block cannot be mistaken for a claim. An `import` line
- * and a comment-only line are not claims either.
+ * Only fenced `js` is read, so a ```bash block cannot be mistaken for a claim. A line that cannot
+ * be evaluated — a declaration, an `import` — is still REPORTED as a skip when it carries an
+ * answer, because a claim that lands in no bucket is invisible to every check here.
  * @param {string} file
  */
 function collectFenced(file) {
@@ -97,18 +99,26 @@ function collectFenced(file) {
     }
     if (!inJs) continue
     const line = lines[i]
-    const cut = line.indexOf('//')
-    if (cut === -1) continue
-    const expr = line.slice(0, cut).trim()
-    // A declaration or a bare keyword line is not a claim, it is setup. `new Function('return
-    // (const x = …)')` is a syntax error, so these have to be filtered before evaluation.
-    if (
-      expr === '' ||
-      /^(import|export|const|let|var|function|return|if|for|\/\/)\b/u.test(expr)
-    ) {
-      continue
+    let body = line
+    let cut = line.indexOf('//')
+    // A claim may be written across two lines, with the answer on a bare `// …` below the
+    // expression. `collect` already joins that shape and this did not, so a two-line README claim
+    // landed in NO bucket — not asserted, not skipped, and invisible to the accounting because
+    // both of its totals come from this same function. That is the one outcome this gate exists
+    // to prevent, so the join is here too.
+    if (cut === -1) {
+      const next = /^\s*(\/\/.*)$/u.exec(lines[i + 1] ?? '')
+      if (next === null || line.trim() === '') continue
+      body = `${line} ${next[1]}`
+      cut = body.indexOf('//')
     }
-    found.push({ file, line: i + 1, expr, expected: line.slice(cut + 2).trim() })
+    const expr = body.slice(0, cut).trim()
+    if (expr === '') continue
+    // A declaration or a bare keyword line is setup, not a claim: `new Function('return
+    // (const x = …)')` is a syntax error, so it cannot be evaluated. It can still CARRY an answer,
+    // and dropping it silently is the same hole as above, so it goes to the skip bucket by reason.
+    const setup = /^(import|export|const|let|var|function|return|if|for)\b/u.test(expr)
+    found.push({ file, line: i + 1, expr, expected: body.slice(cut + 2).trim(), setup })
   }
   return found
 }
@@ -152,7 +162,11 @@ function literalOf(expected) {
 // (`day()` and friends), an expression naming a variable the reader has and the probe does not,
 // and a README line whose comment is deliberately prose. Raising this without naming a new class
 // is how the gate rots.
-const SKIP_CEILING = 25
+//
+// Raised 25 to 28 when `collectFenced` learned the two-line claim shape and stopped dropping
+// declaration lines. Those three README claims were always unchecked; they were invisible before
+// and they are printed now. No claim moved from checked to unchecked.
+const SKIP_CEILING = 28
 
 let asserted = 0
 const skipped = []
@@ -184,6 +198,10 @@ for (const ex of work) {
   if (ex.expected === null) {
     unaccounted++
     failures.push(`${where}  ${ex.expr}\n    has no // answer, so nothing can be checked`)
+    continue
+  }
+  if (ex.setup === true) {
+    skipped.push(`${where}  ${ex.expr}  // ${ex.expected}  [declaration, runs as setup]`)
     continue
   }
   // literalOf before assertable, so trailing prose after a literal does not hide the literal.
@@ -288,6 +306,46 @@ if (skipped.length > SKIP_CEILING) {
     `${skipped.length} claims are unassertable and the ceiling is ${SKIP_CEILING}\n` +
       `    A claim moved from checked to unchecked. Either a literal became prose — put it back —\n` +
       `    or it genuinely cannot be asserted, and then raise SKIP_CEILING with the reason.`,
+  )
+}
+
+// EVERY DECLARATION SITE CARRIES AN EXAMPLE, and this is what proves it. The release notes claim
+// it in prose, and a prose claim that nothing checks is the exact defect this script exists to
+// stop — it was made here twice before this check existed. `index.d.ts` is the only file an editor
+// reads for documentation, so a bare declaration is a caller reading a signature and nothing else.
+// Exemption is BY NAME, never by pattern: a type alias has no call to show. Adding an export
+// without an `@example` fails here, which is the point.
+const NO_EXAMPLE_NEEDED = new Set(['DayInput', 'Interval', 'WeekOptions'])
+const bare = []
+{
+  const lines = readFileSync(new URL('../index.d.ts', import.meta.url), 'utf8').split(
+    '\n',
+  )
+  for (let i = 0; i < lines.length; i++) {
+    if (!/^\s*\/\*\*/u.test(lines[i])) continue
+    const start = i
+    while (i < lines.length && !/\*\//u.test(lines[i])) i++
+    if (
+      lines
+        .slice(start, i + 1)
+        .join('\n')
+        .includes('@example')
+    )
+      continue
+    const decl = /^export\s+(?:declare\s+)?(?:function|const|type)\s+(\w+)/u.exec(
+      lines[i + 1] ?? '',
+    )
+    if (decl !== null && !NO_EXAMPLE_NEEDED.has(decl[1])) {
+      bare.push(`${decl[1]} (index.d.ts:${i + 2})`)
+    }
+  }
+}
+if (bare.length > 0) {
+  failures.push(
+    `${bare.length} declaration site(s) in index.d.ts carry no @example\n` +
+      `    ${bare.join(', ')}\n` +
+      `    An editor shows a signature and nothing else there. Add a runnable example, or add\n` +
+      `    the name to NO_EXAMPLE_NEEDED with the reason it has no call to show.`,
   )
 }
 
