@@ -28,9 +28,6 @@
 // carries no example at all, because the release notes claim there are none. Each is documented
 // where it is enforced. Every behaviour here is proved by planting the defect, never assumed.
 //
-// A green run is ONE line. The roster lives on disk and only its diff is ever printed, because a
-// wall of skips on every pass is a wall nobody reads.
-//
 //   node scripts/examples.mjs
 //   node scripts/examples.mjs --skips    # print the unassertable roster
 //   node scripts/examples.mjs --write    # re-record the roster, deliberately
@@ -323,14 +320,47 @@ if (bucketed !== written) {
   )
 }
 
+/**
+ * How many times each key occurs. The roster is a multiset, so the diff has to count.
+ * @param {string[]} keys
+ */
+function tallyOf(keys) {
+  /** @type {Map<string, number>} */
+  const counts = new Map()
+  for (const key of keys) counts.set(key, (counts.get(key) ?? 0) + 1)
+  return counts
+}
+
 const roster = skipped.map((s) => s.key).toSorted()
 if (write) {
   writeFileSync(BASELINE, `${JSON.stringify({ skips: roster }, null, 2)}\n`)
   console.log(`wrote ${BASELINE} — ${roster.length} unassertable claims recorded`)
 } else {
-  const recorded = JSON.parse(readFileSync(BASELINE, 'utf8')).skips
-  const added = roster.filter((k) => !recorded.includes(k))
-  const gone = recorded.filter((k) => !roster.includes(k))
+  let recorded
+  try {
+    recorded = JSON.parse(readFileSync(BASELINE, 'utf8')).skips
+  } catch {
+    recorded = null
+  }
+  if (!Array.isArray(recorded)) {
+    console.error(
+      `No usable roster at ${BASELINE}. Record one: npm run test:examples:write`,
+    )
+    process.exitCode = 1
+    recorded = roster
+  }
+  // MULTISET, not set. The key drops the line number on purpose, so two claims can share one key
+  // — `differenceInCalendarMonths('2026-02-01', '2026-01-31')` is written twice in `index.d.ts`
+  // today, and an append-only CHANGELOG.md will keep generating repeats. A membership test with
+  // `includes` cannot see multiplicity, so once a key sat in the roster ONCE, a second claim with
+  // the same key could be downgraded in silence and the run would still say "roster unchanged".
+  // Measured before this counted: two edits from a clean tree, exit 0, and the sentence was false.
+  const now = tallyOf(roster)
+  const was = tallyOf(recorded)
+  const added = []
+  const gone = []
+  for (const [key, n] of now) for (let i = was.get(key) ?? 0; i < n; i++) added.push(key)
+  for (const [key, n] of was) for (let i = now.get(key) ?? 0; i < n; i++) gone.push(key)
   if (added.length > 0 || gone.length > 0) {
     failures.push(
       `the unassertable roster moved, ${added.length} added and ${gone.length} gone\n` +
