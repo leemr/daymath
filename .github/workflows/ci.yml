@@ -36,6 +36,13 @@ jobs:
       - name: Format
         if: matrix.node == 26
         run: npm run format:check
+      # Primary version only. The examples are source text, and their answers come from running
+      # daymath, so in principle a native-vs-polyfill split could show here — but that is what the
+      # `runtimes` job exists to catch, and the gate passes under bun (polyfill) too. It runs here
+      # rather than nowhere because no other gate reads a JSDoc comment at all.
+      - name: Examples (every @example executed and asserted)
+        if: matrix.node == 26
+        run: npm run test:examples
       - run: npm test
       - name: Cross-runtime baseline
         run: npm run test:runtimes

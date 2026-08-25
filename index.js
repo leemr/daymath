@@ -598,16 +598,16 @@ function toInterval(interval) {
  *   annotation is accepted on input and dropped from the result. Every other export carries it.
  * @throws {TypeError} If `moment` is not one of the accepted shapes
  * @throws {RangeError} On an Invalid Date, a non-finite number, or an unknown zone
- * @example day()                              // '2026-08-08'  now, UTC
- * @example day('Asia/Tokyo')                  // '2026-08-09'  today in Tokyo
- * @example day(row.createdAt)                 // '2026-08-07'  a Date, UTC
- * @example day(row.createdAt, 'America/New_York') // '2026-08-06'
+ * @example day()                              // today, in UTC
+ * @example day('Asia/Tokyo')                  // today in Tokyo
+ * @example day(row.createdAt)                 // a Date, read in UTC
+ * @example day(row.createdAt, 'America/New_York') // the same instant, New York's day
  * @example day(1761616161771)                 // '2025-10-28'  epoch ms
  * @example day('1999-01-01T00:00:00Z')        // '1999-01-01'  an ISO timestamp
  * @example day(zdt.toString())                // the zone in the string wins
- * @example day(row.created_at)                // '2026-08-08'  a SQLite DATETIME
- * @example day('2026-08-08 12:00:00', 'utc')  // throws: the clock names no zone
- * @example addDays(day(), 2)                  // '2026-08-10'
+ * @example day(row.created_at)                // a SQLite DATETIME
+ * @example day('2026-08-08 12:00:00', 'utc')  // throws TypeError, the clock names no zone
+ * @example addDays(day(), 2)                  // two days from today
  */
 export function day(moment, tz) {
   // Already a day, in every accepted spelling. `bareDay` is the same predicate

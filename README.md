@@ -42,8 +42,8 @@ that reads a clock.
 Start here. No arguments means today, in UTC.
 
 ```js
-day()                                  // '2026-08-08'
-addDays(day(), 2)                      // '2026-08-10'
+day()                                  // today, in UTC
+addDays(day(), 2)                      // two days from today
 ```
 
 Then hand it whatever you already have. It converts; it never stores what you gave it.
@@ -75,7 +75,7 @@ UTC day to the one caller who asked for a local one. Put the zone in the string
 Name a zone when the answer depends on one.
 
 ```js
-day('Asia/Tokyo')                      // '2026-08-09'  today in Tokyo
+day('Asia/Tokyo')                      // today in Tokyo
 day(row.createdAt, 'America/New_York') // '2026-08-06'  the evening before
 day('2026-08-08T23:00:00Z', 'Asia/Tokyo') // '2026-08-09'  same instant, next day
 day(zdt.toString())                    // the zone in the string wins
@@ -214,7 +214,7 @@ For the accepting family only the year label moves, so every export still answer
 the annotation rides along:
 
 ```js
-getYear('2026-01-31[u-ca=buddhist]')        // 2569, not 2026
+getYear('2026-01-31[u-ca=buddhist]')        // 2569  not 2026
 getMonth('2026-01-31[u-ca=buddhist]')       // 1
 addDays('2026-01-31[u-ca=buddhist]', 1)     // '2026-02-01[u-ca=buddhist]'
 setYear('2026-01-31[u-ca=buddhist]', 2570)  // '2027-01-31[u-ca=buddhist]'
