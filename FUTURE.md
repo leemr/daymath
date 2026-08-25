@@ -3,7 +3,7 @@
 Checked-in backlog. Session handoff: local `./todo`, which is untracked and NOT gitignored — the
 `??` line in `git status` is the point, so a stale handoff stays visible.
 
-**Live now:** `daymath@0.7.0` on npmjs · `@leemr/daymath@0.7.0` on GitHub Packages · https://leemr.github.io/daymath/
+**Live now:** `daymath@0.7.1` on npmjs · `@leemr/daymath@0.7.1` on GitHub Packages · https://leemr.github.io/daymath/
 
 ---
 
@@ -23,10 +23,6 @@ start until that call is answered.
 | 6 | **Awesome-list** | submit to an existing awesome list | a stable API | external |
 | 7 | **Prose sweep for 1.0** | move supporting narrative out of this file and the source headers into `todo.claude` | — | no release |
 
-**SQL DATETIME is done and is off this list.** It was row 2. It sits under `[Unreleased]` in
-`CHANGELOG.md` until the release commit stamps the version, and `CHANGELOG.md` is the only place
-the rule and its measurements are written down.
-
 **Row 4 is measured, not a guess.** `markdownlint-cli2` catches the double-blank-line class
 (`MD012`) and would have caught one of the two Markdown defects this PR shipped and then fixed. It
 does **not** catch the other: a heading placed above the wrong bullets, correctly spaced, is
@@ -40,11 +36,6 @@ handles Markdown: `npx oxfmt -c oxfmt.json --check ./*.md` reports issues in all
 The `format` script excludes `*.md` on purpose. Adding them to that glob costs no new dependency and
 would immediately reflow all five — pad every table column and insert blank lines between adjacent
 headings. Use a linter, which reports; never a formatter, which rewrites.
-
-**JSDoc examples are done and off this list.** It was row 6, and the row understated it:
-`index.d.ts` held ZERO `@example` blocks, and it is the only file an editor reads for docs.
-Every declaration that can carry one now does, and `npm run test:examples` both ENFORCES that and
-asserts every answer, so the class cannot rot silently again.
 
 **Row 1 is not free of a release, and the old label saying so was wrong.** `README.md` is one of the
 five files in the npm tarball, so repointing the badge markup leaves npmjs serving the old badge
