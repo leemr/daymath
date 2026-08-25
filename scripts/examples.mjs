@@ -22,14 +22,20 @@
 // asserted, skipped with a printed reason, or unaccounted — and unaccounted is a failure.
 //
 // Three guards stop the gate disarming itself, and each exists because it DID. The ACCOUNTING
-// check fails when a file reads back fewer claims than it has written. `SKIP_CEILING` catches the
-// other direction, a checked claim downgraded to prose, which the accounting cannot see because
-// the written total does not move. `NO_EXAMPLE_NEEDED` fails a declaration that carries no example
-// at all, because the release notes claim there are none. Each is documented where it is enforced.
-// Every behaviour here is proved by planting the defect, never assumed.
+// check fails when a file reads back fewer claims than it has written. The unassertable ROSTER
+// catches the other direction, a checked claim downgraded to prose, which the accounting cannot
+// see because the written total does not move. `NO_EXAMPLE_NEEDED` fails a declaration that
+// carries no example at all, because the release notes claim there are none. Each is documented
+// where it is enforced. Every behaviour here is proved by planting the defect, never assumed.
+//
+// A green run is ONE line. The roster lives on disk and only its diff is ever printed, because a
+// wall of skips on every pass is a wall nobody reads.
 //
 //   node scripts/examples.mjs
-import { readFileSync } from 'node:fs'
+//   node scripts/examples.mjs --skips    # print the unassertable roster
+//   node scripts/examples.mjs --write    # re-record the roster, deliberately
+import { readFileSync, writeFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import * as dm from '../index.js'
 
 const FILES = ['index.d.ts', 'index.js']
@@ -40,7 +46,12 @@ const FILES = ['index.d.ts', 'index.js']
 //
 // A claim here is any line inside a ```js fence that carries a `//`. A line without one is a
 // statement and not a claim, so it is not counted. Everything WITH one must land in a bucket.
-const PROSE_FILES = ['README.md']
+//
+// `CHANGELOG.md` is read for the same reason, and it is where the argument was proved: its 0.4.0
+// entry taught `day()  // '2026-08-08'` and that literal rotted the next day, unseen by every
+// gate. A released entry is a record, but a wrong code example in it is still copied. It stays in
+// this list forever, so a future release note carries the same duty as the README.
+const PROSE_FILES = ['README.md', 'CHANGELOG.md']
 
 /** Everything an example may reference, so the expression can be evaluated as written. */
 const scope = { ...dm }
@@ -92,7 +103,9 @@ function collectFenced(file) {
   const found = []
   let inJs = false
   for (let i = 0; i < lines.length; i++) {
-    const fence = /^```(\w*)\s*$/u.exec(lines[i])
+    // `\s*` and not `^```: a fence nested under a list item is INDENTED, and anchoring at column
+    // zero made every one of them invisible. CHANGELOG.md and FUTURE.md indent all of theirs.
+    const fence = /^\s*```(\w*)\s*$/u.exec(lines[i])
     if (fence !== null) {
       inJs = fence[1] === 'js' ? !inJs : false
       continue
@@ -152,25 +165,39 @@ function literalOf(expected) {
   return /^(true|false)\b/u.exec(head)?.[1] ?? head
 }
 
-// A CEILING on skips, not a floor on assertions, and the difference is maintenance. A floor fires
-// whenever an example is legitimately added or deleted, so it needs a bump for an ordinary edit.
-// What it is really there to catch is a DOWNGRADE: a literal quietly becoming prose, which moves a
-// tag from asserted to skipped while the written total does not change — so the accounting check
-// above cannot see it. A ceiling catches that, and stays correct when examples are added or
-// removed. It only moves when a claim genuinely becomes uncheckable, which needs a reason. The
-// current skips are three honest classes: a clock-dependent answer that cannot be a literal
-// (`day()` and friends), an expression naming a variable the reader has and the probe does not,
-// and a README line whose comment is deliberately prose. Raising this without naming a new class
-// is how the gate rots.
+// A ROSTER of unassertable claims, recorded on disk and diffed — not a count, and not a wall of
+// text on every green run. A count was the first design and it was too blunt: a ceiling can say
+// that a claim went from checked to unchecked, and can never say WHICH. Naming them makes the
+// downgrade legible, and makes the green run one line, the same shape as
+// `cross-runtime.baseline.json` and `bundle-size.baseline.json`.
 //
-// Raised 25 to 28 when `collectFenced` learned the two-line claim shape and stopped dropping
-// declaration lines. Those three README claims were always unchecked; they were invisible before
-// and they are printed now. No claim moved from checked to unchecked.
-const SKIP_CEILING = 28
+// The key carries NO line number on purpose. A line number churns whenever anything above it
+// moves, so a roster keyed by position would drift for reasons that have nothing to do with
+// coverage. File plus expression plus reason identifies the claim itself.
+//
+// Drift fails in BOTH directions. A new entry means a claim stopped being checked. A missing entry
+// means a recorded claim was asserted or deleted, which is usually good and still has to be
+// recorded deliberately. Re-record with `--write`, and the diff is the reason.
+const BASELINE = fileURLToPath(new URL('./examples.baseline.json', import.meta.url))
+const write = process.argv.includes('--write')
+const showSkips = process.argv.includes('--skips')
 
 let asserted = 0
+/** @type {{key: string, text: string}[]} */
 const skipped = []
 const failures = []
+
+/**
+ * Record a claim that cannot be asserted, with the reason printed beside it.
+ * @param {{file: string, line: number, expr: string, expected: string}} ex
+ * @param {string} reason
+ */
+function skip(ex, reason) {
+  skipped.push({
+    key: `${ex.file}  ${ex.expr}  [${reason}]`,
+    text: `${ex.file}:${ex.line}  ${ex.expr}  // ${ex.expected}  [${reason}]`,
+  })
+}
 /** `@example` lines seen but placed in no bucket. Must stay zero, or the accounting has a hole. */
 let unaccounted = 0
 
@@ -201,14 +228,14 @@ for (const ex of work) {
     continue
   }
   if (ex.setup === true) {
-    skipped.push(`${where}  ${ex.expr}  // ${ex.expected}  [declaration, runs as setup]`)
+    skip(ex, 'declaration, runs as setup')
     continue
   }
   // literalOf before assertable, so trailing prose after a literal does not hide the literal.
   // Skipping an example that COULD be asserted is the failure mode this script exists to
   // prevent. The rules for what counts as the literal are on `literalOf`.
   if (!assertable(literalOf(ex.expected))) {
-    skipped.push(`${where}  ${ex.expr}  // ${ex.expected}  [prose, not a literal]`)
+    skip(ex, 'prose, not a literal')
     continue
   }
   const thrown = /^throws\s+(\w*Error)/u.exec(ex.expected)
@@ -235,9 +262,7 @@ for (const ex of work) {
       raised = err
     }
     if (raised instanceof ReferenceError) {
-      skipped.push(
-        `${where}  ${ex.expr}  // ${ex.expected}  [needs ${raised.message.replace(' is not defined', '')}]`,
-      )
+      skip(ex, `needs ${raised.message.replace(' is not defined', '')}`)
       continue
     }
     asserted++
@@ -263,9 +288,7 @@ for (const ex of work) {
     // than the list of identifiers this used to carry: that list only knew the names I had
     // happened to write, and README examples introduced three more the day it was extended.
     if (err instanceof ReferenceError) {
-      skipped.push(
-        `${where}  ${ex.expr}  // ${ex.expected}  [needs ${err.message.replace(' is not defined', '')}]`,
-      )
+      skip(ex, `needs ${err.message.replace(' is not defined', '')}`)
       continue
     }
     asserted++
@@ -283,10 +306,9 @@ for (const ex of work) {
   }
 }
 
-console.log(
-  `daymath examples — ${asserted} asserted, ${skipped.length} not assertable, ${unaccounted} unaccounted\n`,
-)
-for (const s of skipped) console.log(`  skip  ${s}`)
+// The roster is printed on demand, never on a green run. A green run is one line, because a wall
+// of skips on every pass is a wall nobody reads, and a check nobody reads is not a check.
+if (showSkips) for (const s of skipped) console.log(`  skip  ${s.text}`)
 
 const bucketed = asserted + skipped.length + unaccounted
 const written = Object.values(onDisk).reduce((a, b) => a + b, 0)
@@ -301,12 +323,24 @@ if (bucketed !== written) {
   )
 }
 
-if (skipped.length > SKIP_CEILING) {
-  failures.push(
-    `${skipped.length} claims are unassertable and the ceiling is ${SKIP_CEILING}\n` +
-      `    A claim moved from checked to unchecked. Either a literal became prose — put it back —\n` +
-      `    or it genuinely cannot be asserted, and then raise SKIP_CEILING with the reason.`,
-  )
+const roster = skipped.map((s) => s.key).toSorted()
+if (write) {
+  writeFileSync(BASELINE, `${JSON.stringify({ skips: roster }, null, 2)}\n`)
+  console.log(`wrote ${BASELINE} — ${roster.length} unassertable claims recorded`)
+} else {
+  const recorded = JSON.parse(readFileSync(BASELINE, 'utf8')).skips
+  const added = roster.filter((k) => !recorded.includes(k))
+  const gone = recorded.filter((k) => !roster.includes(k))
+  if (added.length > 0 || gone.length > 0) {
+    failures.push(
+      `the unassertable roster moved, ${added.length} added and ${gone.length} gone\n` +
+        `${added.map((k) => `    + ${k}`).join('\n')}${added.length > 0 && gone.length > 0 ? '\n' : ''}` +
+        `${gone.map((k) => `    - ${k}`).join('\n')}\n` +
+        `    An ADDED line is a claim that stopped being checked: put the literal back, or accept\n` +
+        `    it with --write and say why. A GONE line was asserted or deleted, which is usually\n` +
+        `    progress and still gets recorded on purpose. Re-record: npm run test:examples:write`,
+    )
+  }
 }
 
 // EVERY DECLARATION SITE CARRIES AN EXAMPLE, and this is what proves it. The release notes claim
@@ -349,12 +383,12 @@ if (bare.length > 0) {
   )
 }
 
+const tally = `${asserted} asserted, ${skipped.length} unassertable, ${unaccounted} unaccounted`
 if (failures.length > 0) {
-  console.error(
-    `\nFAIL — ${failures.length} example(s) do not match what the code answers:\n`,
-  )
-  for (const f of failures) console.error(`  ${f}`)
+  console.error(`FAIL — ${failures.length} problem(s), on ${tally}:\n`)
+  for (const f of failures) console.error(`  ${f}\n`)
+  console.error(`  Print the unassertable roster with: npm run test:examples -- --skips`)
   process.exitCode = 1
-} else {
-  console.log(`\nPASS — every assertable example answers exactly what it claims.`)
+} else if (!write) {
+  console.log(`daymath examples PASS — ${tally}, roster unchanged`)
 }
