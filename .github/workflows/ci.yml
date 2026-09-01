@@ -55,7 +55,7 @@ jobs:
         run: npm run test:coverage
       - name: Upload coverage to Codecov
         if: matrix.node == 26
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7
         with:
           files: coverage/lcov.info
           # Optional secret from codecov.io → repo settings → token
