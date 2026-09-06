@@ -16,11 +16,8 @@
 // `RangeError` is the failure this gate exists to catch, because that is daymath saying the input
 // was bad when the input was fine. A wrong answer is worse still, and `isValid` gave one.
 //
-// Two phases, one law. The first builds the CDN shape. The second raises the same fault from one
-// import at a time, because the CDN shape cannot reach every catch: a call taking no calendar
-// resolver passes no record between copies, so a split leaves it alone however the bundles fall.
-// Modelling the RULE instead of the one CDN reaches all of them, and it keeps reaching a catch
-// added later, since the import roster is read out of `index.js` rather than written down here.
+// Two phases, one law. The first builds the CDN shape, the second faults one import at a time, and
+// the block above phase two says why the second is not optional.
 //
 //   node scripts/split-copy.mjs
 
@@ -72,16 +69,14 @@ const root = mkdtempSync(join(tmpdir(), 'daymath-split-'))
 const packageRoot = dirname(
   dirname(fileURLToPath(import.meta.resolve('temporal-polyfill/fns/Calendar'))),
 )
-// Every subpath gets its own copy, not just one, because that is what `+esm` produces: five
-// bundles that share nothing. Splitting a single subpath would prove only the first site the call
-// reaches, and the roster would then pass over the narrowings behind it.
-let copies = 0
+// Every subpath gets its own copy, not just one, because that is what `+esm` produces: bundles
+// that share nothing. Splitting a single subpath would prove only the first site the call reaches,
+// and the roster would then pass over the narrowings behind it.
 const foreign = (name) => {
   const dir = join(root, `copy-${name}`, 'temporal-polyfill')
   for (const part of ['package.json', 'fns', 'chunks']) {
     cpSync(join(packageRoot, part), join(dir, part), { recursive: true })
   }
-  copies += 1
   return pathToFileURL(join(dir, 'fns', `${name}.js`)).href
 }
 // Each copy keeps its own `temporal-polyfill` internals and SHARES everything below them, which is
@@ -91,13 +86,16 @@ symlinkSync(dirname(packageRoot), join(root, 'node_modules'), 'dir')
 
 // The source is rewritten, never edited. Every bare specifier becomes a file inside its own copy,
 // which is why the temp directory needs no package of its own.
+//
+// Anchored on `from`, so a `@typedef {import('temporal-polyfill/fns/PlainDate').Record}` in a JSDoc
+// comment is left alone. Matching those too copied three of the packages twice, for a rewrite that
+// only ever landed inside a comment.
+const SPECIFIER = /from 'temporal-polyfill\/fns\/(\w+)'/g
 const rawSource = readFileSync(SOURCE, 'utf8')
-const rewritten = rawSource.replaceAll(/'temporal-polyfill\/fns\/(\w+)'/g, (_, name) =>
-  JSON.stringify(foreign(name)),
+const rewritten = rawSource.replaceAll(
+  SPECIFIER,
+  (_, name) => `from ${JSON.stringify(foreign(name))}`,
 )
-if (copies === 0) {
-  fail('the rewrite matched no `temporal-polyfill/fns/*` import in index.js')
-}
 
 const splitFile = join(root, 'daymath-split.mjs')
 writeFileSync(splitFile, rewritten)
@@ -153,12 +151,10 @@ async function judge(where, file) {
   return { loaded: true, found }
 }
 
-if (problems.length === 0) {
-  const phaseOne = await judge('the split build', splitFile)
-  problems.push(...phaseOne.found)
-  if (!phaseOne.loaded) {
-    fail('the split build threw while loading, so no export was checked')
-  }
+const phaseOne = await judge('the split build', splitFile)
+problems.push(...phaseOne.found)
+if (!phaseOne.loaded) {
+  fail('the split build threw while loading, so no export was checked')
 }
 
 // ─── phase two: raise a TypeError from one import at a time ─────────────────
@@ -177,7 +173,12 @@ const NAMESPACES = [
 const NAMED = [
   ...rawSource.matchAll(/import \{ ([\w,\s]+) \} from 'temporal-polyfill\/fns\/(\w+)'/g),
 ].flatMap(([, names, subpath]) =>
-  names.split(',').map((name) => ({ name: name.trim(), subpath })),
+  // `{ getAny as resolve }` EXPORTS `getAny` and binds `resolve`, and the stub overrides the
+  // export, so the first word is the one to take. Reading the local name writes
+  // `export function getAny as resolve()`, which does not parse.
+  names
+    .split(',')
+    .map((entry) => ({ name: entry.trim().split(/\s+as\s+/u)[0], subpath })),
 )
 
 // A namespace member only counts when `index.js` calls it. A named import always counts: it is
@@ -211,19 +212,48 @@ const VARIANTS = INJECTIONS.map(({ name, subpath }) => {
   const file = join(root, `daymath-${subpath}-${name}.mjs`)
   writeFileSync(
     file,
-    rawSource.replaceAll(/'temporal-polyfill\/fns\/(\w+)'/g, (_, other) =>
-      JSON.stringify(
+    rawSource.replaceAll(SPECIFIER, (_, other) => {
+      const url =
         other === subpath
           ? pathToFileURL(stub).href
-          : import.meta.resolve(`temporal-polyfill/fns/${other}`),
-      ),
-    ),
+          : import.meta.resolve(`temporal-polyfill/fns/${other}`)
+      return `from ${JSON.stringify(url)}`
+    }),
   )
-  return { where: `${subpath}.${name} faulting`, file }
+  return { where: `${subpath}.${name} faulting`, file, stub }
 })
+
+// The stub is loaded on its own FIRST, and a stub that will not load is a defect in this gate.
+// The distinction is the whole reason this check exists. A VARIANT that refuses to load is a legal
+// outcome, because daymath may decline to initialise at all, so the run passes over it. A stub that
+// refuses to load produces the same silence for a different reason: the gate failed to build its
+// own probe, and the import it was watching goes unchecked. Without this, one malformed stub turns
+// a red run green, which is exactly the failure this whole branch exists to stop.
+const builds = await Promise.all(
+  VARIANTS.map(async ({ where, stub }) => {
+    try {
+      await import(pathToFileURL(stub).href)
+      return null
+    } catch (err) {
+      return `${where}: the gate could not build its own probe, so that import went unchecked
+    ${err.message}`
+    }
+  }),
+)
+problems.push(...builds.filter((problem) => problem !== null))
 
 const verdicts = await Promise.all(VARIANTS.map(({ where, file }) => judge(where, file)))
 const reached = verdicts.filter(({ loaded }) => loaded).length
+// Phase one fails when its build will not load. Phase two needs the same gate, and it is a
+// different sentence: a variant that declines to load is legal one at a time, and it is a dead
+// phase when they all do. Without this the run prints `0 of 22` and exits 0, which is a green
+// report on a phase that checked nothing.
+//
+// This is a floor, not a ceiling. It cannot tell a build that legitimately declines from one that
+// broke, so a drop from many to a few still passes. The printed count is what shows that.
+if (reached === 0) {
+  fail('no faulting import loaded, so phase two checked nothing')
+}
 for (const { found } of verdicts) problems.push(...found)
 
 // ─── verdict ────────────────────────────────────────────────────────────────
