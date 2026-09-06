@@ -34,6 +34,13 @@
       "rules": { "prefer-code-point": "off" }
     },
     {
+      // The mirror walks a module graph one URL at a time on purpose. The cache is what keeps
+      // one URL to one file, and parallel fetches would race it into writing duplicates, which
+      // is the exact identity this gate exists to measure.
+      "files": ["scripts/demo-page.mjs"],
+      "rules": { "no-await-in-loop": "off" }
+    },
+    {
       // cur is a Date mutated by setDate, not reassigned; the rule cannot see that.
       "files": ["scripts/differential.mjs"],
       "rules": { "no-unmodified-loop-condition": "off" }

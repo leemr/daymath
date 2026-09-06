@@ -30,6 +30,7 @@
     "test:runtimes:write": "node scripts/cross-runtime.mjs --write",
     "test:intl-day": "node scripts/intl-day.mjs",
     "test:examples": "node scripts/examples.mjs",
+    "test:demo": "node scripts/demo-page.mjs",
     "test:examples:write": "node scripts/examples.mjs --write",
     "test:intl-day:sweep": "node scripts/intl-day.mjs --sweep",
     "size": "node scripts/bundle-size.mjs --run",
