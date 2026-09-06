@@ -360,6 +360,37 @@ would not escape this. Bundlers and browsers are unaffected. A Jest consumer nee
 
 Node 18 was supported through 0.3.0 and is dropped here. It went end-of-life in April 2025.
 
+### In a browser, from a CDN
+
+The `?bundle` is not optional.
+
+```html
+<script type="module">
+  import * as daymath from 'https://esm.sh/daymath?bundle'
+  console.log(daymath.addDays('2026-08-06', 7)) // 2026-08-13
+</script>
+```
+
+Most CDNs serve a daymath that throws on every date, and the message it throws is not helpful.
+daymath imports two subpaths of `temporal-polyfill`, `fns/PlainDate` and `fns/Calendar`. A CDN that
+rebuilds each subpath into its own bundle gives each one a private copy of the polyfill's internals,
+so the calendar built by one copy is unrecognisable to the other and `fromString` throws
+`TypeError: Invalid calling context`. No import spelling avoids it: `temporal-polyfill/fns` is in
+the export map but its file is empty, so the separate subpaths are the whole `fns` API.
+
+Measured, and `npm run test:demo` re-checks the first row on a schedule:
+
+| URL | Works |
+| --- | --- |
+| `https://esm.sh/daymath?bundle` | yes |
+| `https://unpkg.com/daymath?module` | yes |
+| `https://esm.sh/daymath` | no |
+| `https://esm.run/daymath` | no |
+| `https://cdn.jsdelivr.net/npm/daymath/+esm` | no |
+
+A bundler is unaffected. It resolves both subpaths through one copy in `node_modules`, which is why
+every gate in this repo stayed green while the demo page was dead.
+
 ## Types & tests
 
 Plain JS + `index.d.ts` (no compile step). CI runs on Node 20, 22, 24, and 26; the
