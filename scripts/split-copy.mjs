@@ -16,6 +16,12 @@
 // `RangeError` is the failure this gate exists to catch, because that is daymath saying the input
 // was bad when the input was fine. A wrong answer is worse still, and `isValid` gave one.
 //
+// Two phases, one law. The first builds the CDN shape. The second raises the same fault from one
+// import at a time, because the CDN shape cannot reach every catch: a call taking no calendar
+// resolver passes no record between copies, so a split leaves it alone however the bundles fall.
+// Modelling the RULE instead of the one CDN reaches all of them, and it keeps reaching a catch
+// added later, since the import roster is read out of `index.js` rather than written down here.
+//
 //   node scripts/split-copy.mjs
 
 import {
@@ -85,9 +91,9 @@ symlinkSync(dirname(packageRoot), join(root, 'node_modules'), 'dir')
 
 // The source is rewritten, never edited. Every bare specifier becomes a file inside its own copy,
 // which is why the temp directory needs no package of its own.
-const rewritten = readFileSync(SOURCE, 'utf8').replaceAll(
-  /'temporal-polyfill\/fns\/(\w+)'/g,
-  (_, name) => JSON.stringify(foreign(name)),
+const rawSource = readFileSync(SOURCE, 'utf8')
+const rewritten = rawSource.replaceAll(/'temporal-polyfill\/fns\/(\w+)'/g, (_, name) =>
+  JSON.stringify(foreign(name)),
 )
 if (copies === 0) {
   fail('the rewrite matched no `temporal-polyfill/fns/*` import in index.js')
@@ -95,19 +101,6 @@ if (copies === 0) {
 
 const splitFile = join(root, 'daymath-split.mjs')
 writeFileSync(splitFile, rewritten)
-
-let split
-if (problems.length === 0) {
-  try {
-    split = await import(pathToFileURL(splitFile).href)
-  } catch (err) {
-    // A throw at import time is still a legal outcome — it is loud, and nothing answers wrongly.
-    // It is reported rather than passed over, because it would make the roster below vacuous.
-    fail(
-      `the split build threw while loading, so no export was checked\n    ${err.message}`,
-    )
-  }
-}
 
 // ─── run the roster ─────────────────────────────────────────────────────────
 const attempt = (fn) => {
@@ -118,31 +111,120 @@ const attempt = (fn) => {
   }
 }
 
-if (split) {
+// One law, both phases. `where` names the broken build, so a failure says which one produced it.
+// A module that refuses to LOAD is a legal outcome and reports `loaded: false`: it is loud, nothing
+// answers wrongly, and the caller counts it so the run can say how much it really covered.
+//
+// The findings are RETURNED rather than pushed, because phase two judges its builds in parallel.
+// Pushing from inside would order the report by whichever import finished first, and a report that
+// reorders itself between runs is a report nobody can diff.
+async function judge(where, file) {
+  const found = []
+  const fail = (msg) => found.push(msg)
+  let broken
+  try {
+    broken = await import(pathToFileURL(file).href)
+  } catch {
+    return { loaded: false, found }
+  }
   for (const [op, args] of CALLS) {
     const shown = `${op}(${args.map((a) => JSON.stringify(a)).join(', ')})`
     const want = attempt(() => local[op](...args))
-    const got = attempt(() => split[op](...args))
+    const got = attempt(() => broken[op](...args))
 
     if (want.thrown) {
-      fail(`${shown} throws on the local source, so the roster cannot judge the split build
+      fail(`${shown} throws on the local source, so the roster cannot judge ${where}
     source: ${want.thrown.constructor.name}: ${want.thrown.message}`)
       continue
     }
     if (got.answer === want.answer) continue
     if (got.answer !== undefined) {
-      fail(`${shown} answered, and it disagrees with the source
+      fail(`${where}: ${shown} answered, and it disagrees with the source
     source: ${want.answer}
-    split:  ${got.answer}`)
+    broken: ${got.answer}`)
       continue
     }
     if (!(got.thrown instanceof TypeError)) {
-      fail(`${shown} blames the caller for a broken implementation
+      fail(`${where}: ${shown} blames the caller for a broken implementation
     source: ${want.answer}
-    split:  ${got.thrown.constructor.name}: ${got.thrown.message}`)
+    broken: ${got.thrown.constructor.name}: ${got.thrown.message}`)
     }
   }
+  return { loaded: true, found }
 }
+
+if (problems.length === 0) {
+  const phaseOne = await judge('the split build', splitFile)
+  problems.push(...phaseOne.found)
+  if (!phaseOne.loaded) {
+    fail('the split build threw while loading, so no export was checked')
+  }
+}
+
+// ─── phase two: raise a TypeError from one import at a time ─────────────────
+// The split reaches most of the narrowed catches and it cannot reach them all. The `Instant` parse
+// and the `ZonedDateTime` zone probe take no calendar resolver, so no record crosses between copies
+// and neither call breaks under a split however the bundles fall. Their narrowing would then be
+// code no gate ever runs, which is how a catch-all gets re-introduced by a later edit.
+//
+// So the second phase stops modelling one CDN and models the rule instead: ANY import can fault,
+// and daymath owes the same answer either way. Each named import is replaced in turn by one that
+// raises the fault the real split raises. Nothing here is hand-listed — the roster of imports is
+// read out of `index.js`, so an import added later joins this phase without an edit.
+const NAMESPACES = [
+  ...rawSource.matchAll(/import \* as (\w+) from 'temporal-polyfill\/fns\/(\w+)'/g),
+].map(([, alias, subpath]) => ({ alias, subpath }))
+const NAMED = [
+  ...rawSource.matchAll(/import \{ ([\w,\s]+) \} from 'temporal-polyfill\/fns\/(\w+)'/g),
+].flatMap(([, names, subpath]) =>
+  names.split(',').map((name) => ({ name: name.trim(), subpath })),
+)
+
+// A namespace member only counts when `index.js` calls it. A named import always counts: it is
+// named because it is used, and `getAny` is passed as a value rather than called here.
+const INJECTIONS = [
+  ...NAMESPACES.flatMap(({ alias, subpath }) =>
+    [
+      ...new Set(
+        [...rawSource.matchAll(new RegExp(`\\b${alias}\\.(\\w+)\\(`, 'g'))].map(
+          ([, name]) => name,
+        ),
+      ),
+    ].map((name) => ({ name, subpath })),
+  ),
+  ...NAMED,
+]
+if (INJECTIONS.length === 0) {
+  fail('no `temporal-polyfill/fns` import was read out of index.js')
+}
+
+// Written first, judged after. Each build is an independent module graph, so they load together.
+const VARIANTS = INJECTIONS.map(({ name, subpath }) => {
+  // `export *` skips a name the module exports itself, so the override wins and every other export
+  // stays real. That keeps the fault to ONE function, which is what makes the failure readable.
+  const stub = join(root, `stub-${subpath}-${name}.mjs`)
+  writeFileSync(
+    stub,
+    `export * from ${JSON.stringify(import.meta.resolve(`temporal-polyfill/fns/${subpath}`))}\n` +
+      `export function ${name}() { throw new TypeError('Invalid calling context') }\n`,
+  )
+  const file = join(root, `daymath-${subpath}-${name}.mjs`)
+  writeFileSync(
+    file,
+    rawSource.replaceAll(/'temporal-polyfill\/fns\/(\w+)'/g, (_, other) =>
+      JSON.stringify(
+        other === subpath
+          ? pathToFileURL(stub).href
+          : import.meta.resolve(`temporal-polyfill/fns/${other}`),
+      ),
+    ),
+  )
+  return { where: `${subpath}.${name} faulting`, file }
+})
+
+const verdicts = await Promise.all(VARIANTS.map(({ where, file }) => judge(where, file)))
+const reached = verdicts.filter(({ loaded }) => loaded).length
+for (const { found } of verdicts) problems.push(...found)
 
 // ─── verdict ────────────────────────────────────────────────────────────────
 rmSync(root, { recursive: true, force: true })
@@ -154,6 +236,8 @@ if (problems.length > 0) {
   )
   process.exit(1)
 }
+// The load count is reported because a faulting import can refuse to load, and a run that only
+// ever refused to load has checked nothing. `getAny` is one: `index.js` calls it at module scope.
 console.log(
-  `split copy PASS — ${CALLS.length} calls, none answered wrongly and none blamed the caller`,
+  `split copy PASS — ${CALLS.length} calls against the split build and against ${reached} of ${INJECTIONS.length} faulting imports, none answered wrongly and none blamed the caller`,
 )
