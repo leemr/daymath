@@ -32,6 +32,7 @@
     "test:examples": "node scripts/examples.mjs",
     "test:demo": "node scripts/demo-page.mjs",
     "test:split": "node scripts/split-copy.mjs",
+    "test:split:write": "node scripts/split-copy.mjs --write",
     "test:examples:write": "node scripts/examples.mjs --write",
     "test:intl-day:sweep": "node scripts/intl-day.mjs --sweep",
     "size": "node scripts/bundle-size.mjs --run",

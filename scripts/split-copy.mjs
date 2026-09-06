@@ -220,7 +220,7 @@ const VARIANTS = INJECTIONS.map(({ name, subpath }) => {
       return `from ${JSON.stringify(url)}`
     }),
   )
-  return { where: `${subpath}.${name} faulting`, file, stub }
+  return { key: `${subpath}.${name}`, where: `${subpath}.${name} faulting`, file, stub }
 })
 
 // The stub is loaded on its own FIRST, and a stub that will not load is a defect in this gate.
@@ -244,17 +244,41 @@ problems.push(...builds.filter((problem) => problem !== null))
 
 const verdicts = await Promise.all(VARIANTS.map(({ where, file }) => judge(where, file)))
 const reached = verdicts.filter(({ loaded }) => loaded).length
-// Phase one fails when its build will not load. Phase two needs the same gate, and it is a
-// different sentence: a variant that declines to load is legal one at a time, and it is a dead
-// phase when they all do. Without this the run prints `0 of 22` and exits 0, which is a green
-// report on a phase that checked nothing.
-//
-// This is a floor, not a ceiling. It cannot tell a build that legitimately declines from one that
-// broke, so a drop from many to a few still passes. The printed count is what shows that.
-if (reached === 0) {
-  fail('no faulting import loaded, so phase two checked nothing')
-}
 for (const { found } of verdicts) problems.push(...found)
+
+// ─── the roster baseline ────────────────────────────────────────────────────
+// A variant that declines to load is legal, and coverage falling to nothing is not. A COUNT cannot
+// tell those apart, because it can say that something stopped being checked and never say WHICH.
+// `examples.baseline.json` learned that already, and this records a roster for the same reason.
+//
+// `declined` is a real state, not a failure. `index.js` calls `getAny` at module scope, so a
+// faulting stub stops the whole module loading and no export can be judged. That is legal and
+// permanent. What must not happen is that state spreading with nobody noticing.
+//
+// Drift fails in BOTH directions and names the import. A `checked` that becomes `declined` is
+// coverage lost. A `declined` that becomes `checked` is coverage gained, which is good news and
+// still has to be recorded, or the next drop starts from an unrecorded floor. `--write` re-records.
+const BASELINE = fileURLToPath(new URL('split-copy.baseline.json', import.meta.url))
+const roster = Object.fromEntries(
+  VARIANTS.map(({ key }, index) => [
+    key,
+    verdicts[index].loaded ? 'checked' : 'declined',
+  ]),
+)
+if (process.argv.includes('--write')) {
+  writeFileSync(BASELINE, `${JSON.stringify({ roster }, null, 2)}\n`)
+  console.log(`WROTE ${BASELINE}`)
+} else {
+  const { roster: expected } = JSON.parse(readFileSync(BASELINE, 'utf8'))
+  for (const key of [
+    ...new Set([...Object.keys(expected), ...Object.keys(roster)]),
+  ].toSorted()) {
+    if (expected[key] === roster[key]) continue
+    fail(
+      `${key}: the baseline says ${expected[key] ?? 'this import does not exist'}, this run says ${roster[key] ?? 'this import does not exist'}`,
+    )
+  }
+}
 
 // ─── verdict ────────────────────────────────────────────────────────────────
 rmSync(root, { recursive: true, force: true })
@@ -266,8 +290,7 @@ if (problems.length > 0) {
   )
   process.exit(1)
 }
-// The load count is reported because a faulting import can refuse to load, and a run that only
-// ever refused to load has checked nothing. `getAny` is one: `index.js` calls it at module scope.
+// The count is for a reader. `split-copy.baseline.json` is what actually gates it.
 console.log(
   `split copy PASS — ${CALLS.length} calls against the split build and against ${reached} of ${INJECTIONS.length} faulting imports, none answered wrongly and none blamed the caller`,
 )

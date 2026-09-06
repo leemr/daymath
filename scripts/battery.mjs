@@ -50,6 +50,15 @@ const DATES = [
 // silently returns a wrong date instead of throwing.
 const AMOUNTS = [0, 1, -1, 7, -7, 28, 31, 400, -400, 1e5, 1e9, -1e9]
 
+// Every `weekStartsOn` the battery passes, accepted and refused together. 0 and 7 are both Sunday,
+// 1 is the other end of the accepted range, and `null` coalesces to 7. The rest must be refused.
+//
+// The refused half is the reason this list exists. With only valid values, an export can change
+// WHICH error it reports for a bad option and no hash moves. `isSameWeek` did exactly that: it read
+// the option inside its range guard and answered `isSameWeek could not produce a valid date`
+// instead of naming the option, and this gate passed through the whole release that carried it.
+const WEEK_STARTS = [0, 1, 7, null, 8, -1, 1.5, '1']
+
 // Fixed, short, and independent of DATES, so no probe can span the whole range.
 const INTERVALS = [
   { start: '2026-01-01', end: '2026-01-05' }, // forward
@@ -244,7 +253,13 @@ export function run(dm, PlainDate) {
       for (const n of AMOUNTS) rows.push(outcome(() => fn(d, n)))
       for (const other of ['2026-08-06', '2024-02-29', d])
         rows.push(outcome(() => fn(d, other)))
-      for (const w of [0, 1, 7]) rows.push(outcome(() => fn(d, { weekStartsOn: w })))
+      for (const w of WEEK_STARTS) {
+        rows.push(outcome(() => fn(d, { weekStartsOn: w })))
+        // A THIRD argument, which nothing else here passes. `isSameWeek` and
+        // `areIntervalsOverlapping` are the only exports that take one, so before this row their
+        // whole options path was unprobed and every other export ignores the extra argument.
+        rows.push(outcome(() => fn(d, '2026-08-06', { weekStartsOn: w })))
+      }
     }
     for (const iv of INTERVALS) {
       rows.push(
@@ -255,6 +270,12 @@ export function run(dm, PlainDate) {
         outcome(() => fn(iv, INTERVALS[0])),
         outcome(() => fn(iv, { weekStartsOn: 1 })),
       )
+      // `areIntervalsOverlapping` reads `inclusive` from a third argument, and both values change
+      // the answer where two intervals touch at one endpoint. `'yes'` is neither, so it takes the
+      // `?? false` path and proves the coalesce rather than the truthiness.
+      for (const inclusive of [true, false, 'yes']) {
+        rows.push(outcome(() => fn(iv, INTERVALS[0], { inclusive })))
+      }
     }
     for (const m of MOMENTS) {
       rows.push(
