@@ -5,6 +5,17 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **`npm run test:split` builds a broken Temporal on disk and checks that daymath still tells the truth.** 0.7.2 fixed one catch-all and shipped `test:demo` to watch for the next one, but that gate needs the network, reads only the ops the demo page offers, and can only see a build that is already published. This one copies `temporal-polyfill` out of `node_modules` once per subpath, rewrites the bare specifiers in `index.js` to point each import at its own copy, and imports the result. That is exactly what jsDelivr's `+esm` produces, so the brand check between the copies fails the same way, and it runs offline against the working tree instead of against npmjs. The law it checks is one sentence, and it holds for any export: a broken implementation must never make daymath answer wrongly or blame the caller. Every call in the roster either agrees with `../index.js` or throws a `TypeError`. A `RangeError` is the failure it exists to catch, because that is daymath saying the input was bad when the input was fine, and a wrong answer is worse still. Proved to block by reverting `index.js` to 0.7.2 and running it: the run names each mislabel and each wrong answer, with the source answer beside it, and exits 1. It runs on every matrix version in `ci`, because the shim lane and the native lane word their faults differently, and `prepublishOnly` now runs it too.
+
+### Fixed
+
+- **A broken Temporal was still being relabelled everywhere `toPlainDate` is not.** 0.7.2 narrowed one catch and called the job done. It was one instance of a class, and a sweep of the perimeter found the rest, each proved reachable by loading a broken build and calling it. `isValid` was the worst of them: it answered `false` for a perfectly valid day and raised nothing at all, so a reader learned nothing and had nowhere to look. `calendarRule` reported `unknown` for a calendar the runtime names happily. `guardRange` relabelled every throw under it, across every add, sub, `setYear`, `startOf` and interval export. The zoned branch of `day()` said it could not read a zone that it had read correctly. All of them now go through one function, `assertCallerFault`, which re-throws anything that is not a `RangeError` — find them with `grep -n 'assertCallerFault' index.js`. The discriminant is a measurement, not a guess: a bad string, a bad field, an out-of-range result and an unknown calendar each report a `RangeError` on the shim lane and on the native lane, checked through parse, `withFields`, `addDays`, `addYears`, `fromFields` and `withCalendar`. `isValid` needed its own shape check first, because `toPlainDate` reports a non-string with a `TypeError` and `isValid` still owes `false` for one.
+- **`isSameWeek` blamed the dates for a bad `weekStartsOn`.** It read the option inside its own range guard, so `isSameWeek(a, b, { weekStartsOn: 8 })` answered `daymath: isSameWeek could not produce a valid date` and never named the option. `startOfWeek` and `endOfWeek` already read it before the guard and say `weekStartsOn must be an integer 0…7`. `isSameWeek` now does the same, which is the same defect as the entry above wearing different clothes: a guard that catches more than it was written for.
+
 ## [0.7.2] — 2026-09-05
 
 ### Added

@@ -378,7 +378,10 @@ fence is not:
 addDays('2026-08-06', 7) // '2026-08-13'
 ```
 
-Most CDNs serve a daymath that throws on every date, and the message it throws is not helpful.
+Most CDNs serve a daymath that throws on every date. What it throws is
+`TypeError: Invalid calling context`, which names the implementation. daymath will not relabel a
+broken Temporal as your bad input, and it will not answer `false` for a day it cannot read.
+
 daymath imports two subpaths of `temporal-polyfill`, `fns/PlainDate` and `fns/Calendar`. A CDN that
 rebuilds each subpath into its own bundle gives each one a private copy of the polyfill's internals,
 so the calendar built by one copy is unrecognisable to the other and `fromString` throws
@@ -405,6 +408,10 @@ done
 
 A bundler is unaffected. It resolves both subpaths through one copy in `node_modules`, which is why
 every gate in this repo stayed green while the demo page was dead.
+
+`npm run test:split` closes that hole. It builds the split on disk from `node_modules`, so it needs
+no network and no published build, then it checks one law across the API: a broken Temporal must
+never make daymath answer wrongly or blame the caller.
 
 ## Types & tests
 

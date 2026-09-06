@@ -50,6 +50,11 @@ jobs:
       # Intl's answers come from the ICU build bundled with each Node, not from this repo.
       - name: Intl vs Temporal (day() without ZonedDateTime)
         run: npm run test:intl-day
+      # Every version too. It builds a broken Temporal on disk and checks that daymath never
+      # answers wrongly and never blames the caller. The shim lane and the native lane word their
+      # faults differently, so the narrowing has to hold on both.
+      - name: Split copies of temporal-polyfill (the CDN shape)
+        run: npm run test:split
       - name: Coverage (100% gate + lcov)
         if: matrix.node == 26
         run: npm run test:coverage
