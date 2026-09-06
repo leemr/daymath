@@ -3,7 +3,7 @@
 Checked-in backlog. Session handoff: local `./todo`, which is untracked and NOT gitignored — the
 `??` line in `git status` is the point, so a stale handoff stays visible.
 
-**Live now:** `daymath@0.7.1` on npmjs · `@leemr/daymath@0.7.1` on GitHub Packages · https://leemr.github.io/daymath/
+**Live now:** `daymath@0.7.2` on npmjs · `@leemr/daymath@0.7.2` on GitHub Packages · https://leemr.github.io/daymath/
 
 ---
 
