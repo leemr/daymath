@@ -39,13 +39,45 @@ CI uploads `coverage/lcov.info` from the Node 24 job. **Linked** for this repo (
 - Upload step uses `fail_ci_if_error: false` so a flaky upload doesn’t red CI; flip to `true` in `ci.yml` if you want upload failures hard-fail.
 - If the token was ever exposed, regenerate on Codecov and update the GitHub secret.
 
-## Publish (maintainer)
+## Release (maintainer)
 
-| Registry | Name | How |
-|----------|------|-----|
-| npmjs.com | `daymath` | Laptop `npm publish` (or future GHA provenance — see FUTURE.md) |
-| GitHub Packages | `@leemr/daymath` | Release publish **or** Actions → `publish-github-packages` (not both for the same version) |
+Run `npm run release:check` first. It reads the tree, the version, the changelog, the registry and
+the npm credential, refuses on anything that is not ready, and prints the remaining steps in order.
+Everything below is what it checks, written out.
 
-After a publish, run `npm run test:demo`. It loads the demo page's own CDN URL and checks the
-published build against the source. A CDN needs a few minutes to rebuild a new version, so give it
-that before reading a red run as real. Actions → `demo-page` runs the same check.
+**The order is the procedure. Do not reorder it, and do not substitute a step.**
+
+1. Prepare the release commit. `npm version <patch|minor|major> --no-git-tag-version` — no tag yet,
+   step 3 makes it. In `CHANGELOG.md`, rename `## [Unreleased]` to `## [<version>] — <YYYY-MM-DD>`.
+   In `FUTURE.md`, point the **Live now** line at the new version.
+2. Commit those four files as `Release daymath <version>`, then push `master`.
+3. Cut the GitHub Release on that commit, tagged `v<version>`, with the changelog section as the
+   notes. **This is what publishes `@leemr/daymath`**: `publish-github-packages.yml` fires on
+   `release: published`.
+4. `npm publish` from this directory, for unscoped `daymath` on npmjs.com.
+5. `npm run test:demo`.
+
+| Registry | Name | Published by |
+|----------|------|--------------|
+| npmjs.com | `daymath` | step 4, from the laptop (or future GHA provenance — see FUTURE.md) |
+| GitHub Packages | `@leemr/daymath` | step 3, by the release trigger |
+
+**Actions → `publish-github-packages` is a fallback, not an alternative.** It exists for a version
+whose release already went out, so the release trigger cannot fire again. Reaching for it during a
+normal release publishes the package early, and then step 3 tries to publish a version that already
+exists and the run goes red. That happened on 0.7.3. Recovering it meant disabling the workflow,
+cutting the release, and re-enabling — which works, and is not a thing to plan for.
+
+Read the history before choosing anything else: `gh run list --workflow publish-github-packages.yml`.
+
+Two failures to expect, both of which have already cost a release:
+
+- **`npm publish` needs a real `cd` into this directory.** It reads `package.json` from the process
+  directory, and `--prefix` does not change that.
+- **A stale npm token reports as `E404 Not Found - PUT`**, which reads like a package problem and is
+  not one. Run `npm whoami` first: it names the real fault. The token must be a granular one with
+  **Bypass two-factor authentication**, because the account's second factor is a security key, so no
+  OTP exists and `--otp` can never succeed.
+
+Step 7 needs the network and a rebuilt CDN. Give it a few minutes before reading a red run as real.
+Actions → `demo-page` runs the same check on a schedule.
