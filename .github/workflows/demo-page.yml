@@ -1,14 +1,7 @@
 name: demo-page
 
-# The GitHub Pages demo loads the PUBLISHED package from a CDN, so it is a different artifact
-# from the one `ci` tests and it can break with nothing in this repo changing. It did: a CDN
-# rebuild handed out two copies of `temporal-polyfill`, every date threw, and the page stayed
-# dead for three releases while every gate here was green.
-#
-# This is deliberately NOT part of `ci`:
-#   1. It needs the network and a live CDN, so it must never be able to block a merge.
-#   2. It measures what is PUBLISHED, so a PR that changes behaviour would fail it until release.
-# It runs on a schedule, on demand, and whenever the page or the gate itself changes on master.
+# `npm run test:demo` checks the PUBLISHED build the demo page loads, not this repo's source.
+# scripts/demo-page.mjs is the design-of-record, including why this is not part of `ci`.
 
 on:
   schedule:
