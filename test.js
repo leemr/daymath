@@ -1289,6 +1289,12 @@ describe('difference / compare', () => {
       () => startOfWeek(d, { weekStartsOn: /** @type {any} */ (1.5) }),
       /weekStartsOn/,
     )
+    // isSameWeek read the option inside its range guard, so it answered `isSameWeek could not
+    // produce a valid date` and never named the option the caller got wrong.
+    assert.throws(
+      () => isSameWeek(d, d, { weekStartsOn: /** @type {any} */ (8) }),
+      /weekStartsOn/,
+    )
   })
 
   it('weekStartsOn 0 and 7 both mean Sunday, on every day of the week', () => {

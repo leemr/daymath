@@ -281,8 +281,8 @@ function calendarRule(calendar) {
   let verdict = { reason: 'renumbers' }
   try {
     const offsets = new Set()
-    // `getAny(calendar)` throws for an id the polyfill cannot build, which is the `unknown` case
-    // below. It is resolved once rather than per probe.
+    // `getAny` answers for any id, so the refusal lands on `withCalendar` below, and that is the
+    // `unknown` case. The record is still resolved once here rather than per probe.
     const calendarRecord = getAny(calendar)
     for (const probe of CALENDAR_PROBES) {
       const iso = PlainDateFns.fromString(probe, getAny)
@@ -296,7 +296,10 @@ function calendarRule(calendar) {
     // The offset is the discriminant — `'offset' in verdict` is what accepts — and the number
     // itself is kept unread on purpose, so a debugger shows WHY a calendar passed.
     if (offsets.size === 1) verdict = { offset: [...offsets][0] }
-  } catch {
+  } catch (err) {
+    // A broken implementation refuses every calendar, so an unnarrowed catch here reported
+    // `unknown` for ids the runtime names perfectly well. See assertCallerFault.
+    assertCallerFault(err)
     // The runtime cannot build this calendar at all, which is a different message for the caller.
     verdict = { reason: 'unknown' }
   }
@@ -401,13 +404,7 @@ function toPlainDate(value, label = 'date') {
       ? plain
       : PlainDateFns.withCalendar(plain, getAny(calendar))
   } catch (err) {
-    // Temporal reports every input fault here as a RangeError, so anything else is the
-    // implementation breaking and must surface unchanged. A CDN serving two copies of
-    // `temporal-polyfill/fns` throws `TypeError: Invalid calling context`; the old catch-all
-    // relabelled that as `invalid date` and sent the reader after their own input instead.
-    // Ignored for coverage because a healthy Temporal cannot reach it.
-    /* c8 ignore next */
-    if (!(err instanceof RangeError)) throw err
+    assertCallerFault(err)
     throw new RangeError(`daymath: invalid ${label} ${JSON.stringify(text)}`, {
       cause: err,
     })
@@ -446,6 +443,29 @@ function assertFiniteNumber(n, label) {
 }
 
 /**
+ * Re-throw anything that is not the caller's fault.
+ *
+ * Every Temporal reports a bad string, a bad field and an out-of-range result as a `RangeError`.
+ * Measured on both lanes, shim and native, for parse, `withFields`, `addDays`, `addYears`,
+ * `fromFields` and `withCalendar`. A `TypeError` from one of these calls therefore means the
+ * implementation is broken, not the input, and daymath must let it through untouched.
+ *
+ * The break this exists for is real and it is silent. A CDN that builds each subpath of
+ * `temporal-polyfill/fns` as its own bundle hands daymath a `PlainDate` from one copy and a
+ * calendar record from another. The brand check then throws `TypeError: Invalid calling context`
+ * on every call. Every catch in this file used to relabel that as the reader's own bad date, so
+ * the page was dead for three releases and no gate said a word.
+ *
+ * Reproduce the fault without a CDN: any object that is not a real calendar record raises it.
+ * `scripts/split-copy.mjs` builds that shape and asserts each site surfaces it.
+ * @param {unknown} err
+ */
+function assertCallerFault(err) {
+  /* c8 ignore next */
+  if (!(err instanceof RangeError)) throw err
+}
+
+/**
  * Run a Temporal op and keep the `daymath:` message contract when it fails.
  * Covers both a result past the range and an argument Temporal refuses
  * outright, hence the neutral wording.
@@ -464,6 +484,7 @@ function guardRange(label, op) {
   try {
     return op()
   } catch (err) {
+    assertCallerFault(err)
     throw new RangeError(`daymath: ${label} could not produce a valid date`, {
       cause: err,
     })
@@ -660,12 +681,14 @@ export function day(moment, tz) {
         // a calendar annotation, and the shim funcApi would drop it under `getISO`.
         zoned = ZonedFns.fromString(moment, getAny)
       } catch (err) {
+        assertCallerFault(err)
         throw new RangeError(
           `daymath: day() could not read ${JSON.stringify(moment)} in the time zone it names`,
           { cause: err },
         )
       }
     } else {
+      let momentIsZone = false
       try {
         // A timestamp carrying `Z` or an offset names an exact instant, so it
         // reads as a moment. Temporal's own grammar is the definition of that.
@@ -675,7 +698,10 @@ export function day(moment, tz) {
         // bracket Temporal will not build anything that does. Refusing it would
         // reject a right answer for a reason that cannot apply.
         instant = InstantFns.fromString(moment)
-      } catch {
+      } catch (err) {
+        // The probe decides a ROLE, so a broken implementation would send a timestamp down the
+        // zone branch and answer today. See assertCallerFault.
+        assertCallerFault(err)
         // Not a moment, so the string must be a zone — decided by shape, before
         // Temporal sees it. Temporal's zone grammar also accepts a whole
         // timestamp and pulls the zone out of it, so letting it decide the role
@@ -683,8 +709,14 @@ export function day(moment, tz) {
         if (!ZONE_LIKE.test(moment)) {
           throw new RangeError(
             `daymath: day() got ${JSON.stringify(moment)}, which is neither a moment nor a time zone`,
+            { cause: err },
           )
         }
+        momentIsZone = true
+      }
+      // Outside the catch, because the parse failure is not the cause of an argument conflict.
+      // Reporting it as one names a parse the caller never asked for.
+      if (momentIsZone) {
         if (tz !== undefined && tz !== null) {
           throw new TypeError(
             `daymath: day() got two time zones, ${JSON.stringify(moment)} and ${JSON.stringify(tz)}`,
@@ -721,6 +753,7 @@ export function day(moment, tz) {
   try {
     ZonedFns.fromFields({ timeZone: zone, year: 1970, month: 1, day: 1 })
   } catch (err) {
+    assertCallerFault(err)
     throw new RangeError(
       `daymath: day() got an unknown time zone ${JSON.stringify(zone)}`,
       { cause: err },
@@ -814,10 +847,18 @@ export function isValid(value) {
       'daymath: Date is not allowed for isValid (pass ISO 8601 day string)',
     )
   }
+  // The shape is settled HERE, not in the catch, because `toPlainDate` reports a non-string with
+  // a TypeError and `isValid` owes `false` for one. With the shape already decided, every
+  // remaining TypeError is the implementation breaking, so the catch below can narrow.
+  //
+  // Narrowing matters most on this export. It is the only one that answers rather than throws, so
+  // a broken implementation made it say `false` for a valid day and told the reader nothing.
+  if (typeof value !== 'string' && !isPlainDate(value)) return false
   try {
     toPlainDate(value)
     return true
-  } catch {
+  } catch (err) {
+    assertCallerFault(err)
     return false
   }
 }
@@ -1386,6 +1427,11 @@ export const isSameDay = isEqual
 export function isSameWeek(dateLeft, dateRight, options) {
   const left = toPlainDate(dateLeft, 'dateLeft')
   const right = toPlainDate(dateRight, 'dateRight')
+  // Read the option BEFORE the guard, exactly as startOfWeek and endOfWeek do. Inside it, a bad
+  // `weekStartsOn` was relabelled `isSameWeek could not produce a valid date`, which names the
+  // dates and hides the option the caller actually got wrong.
+  const leftDiff = daysIntoWeek(left, options)
+  const rightDiff = daysIntoWeek(right, options)
   // own guard, so a week start below the minimum does not say startOfWeek
   // compare, not equals: Temporal's equals compares the calendar as well as the day, so it
   // answers false for the same week in two calendars. compare reads the ISO fields alone.
@@ -1393,8 +1439,8 @@ export function isSameWeek(dateLeft, dateRight, options) {
     'isSameWeek',
     () =>
       PlainDateFns.compare(
-        PlainDateFns.subtractDays(left, daysIntoWeek(left, options)),
-        PlainDateFns.subtractDays(right, daysIntoWeek(right, options)),
+        PlainDateFns.subtractDays(left, leftDiff),
+        PlainDateFns.subtractDays(right, rightDiff),
       ) === 0,
   )
 }

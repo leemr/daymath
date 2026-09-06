@@ -1,0 +1,26 @@
+{
+  "roster": {
+    "PlainDate.fromString": "checked",
+    "PlainDate.withCalendar": "checked",
+    "PlainDate.toString": "checked",
+    "PlainDate.dayOfWeek": "checked",
+    "PlainDate.dayOfYear": "checked",
+    "PlainDate.daysInMonth": "checked",
+    "PlainDate.inLeapYear": "checked",
+    "PlainDate.withFields": "checked",
+    "PlainDate.subtractDays": "checked",
+    "PlainDate.addDays": "checked",
+    "PlainDate.diff": "checked",
+    "PlainDate.compare": "checked",
+    "PlainDate.addMonths": "checked",
+    "PlainDate.addYears": "checked",
+    "Instant.fromString": "checked",
+    "Instant.toZonedDateTimeISO": "checked",
+    "Instant.fromEpochMilliseconds": "checked",
+    "ZonedDateTime.fromString": "checked",
+    "ZonedDateTime.fromFields": "checked",
+    "ZonedDateTime.toPlainDate": "checked",
+    "Now.plainDateISO": "checked",
+    "Calendar.getAny": "declined"
+  }
+}
