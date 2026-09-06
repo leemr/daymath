@@ -14,8 +14,9 @@
 // behaviour, and changing one would be a breaking change with its own release. So a mismatch is
 // a real finding, and the printed version tells you which build produced it.
 //
-// It needs the network, so it is NOT part of `npm test`. CI runs it on its own schedule and
-// before a release, where a red run means the live page is broken for everyone.
+// It needs the network, so it is NOT part of `npm test` and not part of `ci`. The `demo-page`
+// workflow runs it weekly, on demand, and when the page or this file changes on master. Run it by
+// hand after a release. A red run means the live page is broken for everyone.
 //
 //   node scripts/demo-page.mjs            # check the page's own URL
 //   node scripts/demo-page.mjs --verbose  # print every call
@@ -100,7 +101,14 @@ async function mirror(href, root) {
       .digest('hex') + '.mjs',
   )
   cache.set(href, self)
-  const specs = [...src.matchAll(/(?:^|[\s;}])(?:import|export)[^'"]*?['"]([^'"]+)['"]/g)]
+  // Only what can legally sit between `import`/`export` and its specifier: names, braces, commas,
+  // a star, an `as`, and whitespace. A looser gap matches `export function f() { throw Error("x") }`
+  // and then tries to fetch "x", which is a false failure this gate reported once already.
+  const specs = [
+    ...src.matchAll(
+      /(?:^|[\s;}])(?:import|export)\s*(?:[\w*{},\s$]*?from\s*)?['"]([^'"]+)['"]/g,
+    ),
+  ]
   for (const [, spec] of specs) {
     const abs = new URL(spec, res.url || href).href
     const dep = await mirror(abs, root)
