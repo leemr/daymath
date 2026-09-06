@@ -401,6 +401,13 @@ function toPlainDate(value, label = 'date') {
       ? plain
       : PlainDateFns.withCalendar(plain, getAny(calendar))
   } catch (err) {
+    // Temporal reports every input fault here as a RangeError, so anything else is the
+    // implementation breaking and must surface unchanged. A CDN serving two copies of
+    // `temporal-polyfill/fns` throws `TypeError: Invalid calling context`; the old catch-all
+    // relabelled that as `invalid date` and sent the reader after their own input instead.
+    // Ignored for coverage because a healthy Temporal cannot reach it.
+    /* c8 ignore next */
+    if (!(err instanceof RangeError)) throw err
     throw new RangeError(`daymath: invalid ${label} ${JSON.stringify(text)}`, {
       cause: err,
     })

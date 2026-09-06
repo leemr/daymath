@@ -1,0 +1,32 @@
+name: demo-page
+
+# `npm run test:demo` checks the PUBLISHED build the demo page loads, not this repo's source.
+# scripts/demo-page.mjs is the design-of-record, including why this is not part of `ci`.
+
+on:
+  schedule:
+    - cron: '17 6 * * 1' # Mondays, a quiet hour, so a broken page is found within a week
+  workflow_dispatch: # run this by hand right after a release
+  push:
+    branches: [master]
+    paths:
+      - docs/index.html
+      - scripts/demo-page.mjs
+      - .github/workflows/demo-page.yml
+
+permissions:
+  contents: read
+
+jobs:
+  demo:
+    runs-on: ubuntu-latest
+    name: demo page
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci
+      - name: The published build the demo loads still answers what the source answers
+        run: npm run test:demo

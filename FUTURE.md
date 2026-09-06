@@ -22,6 +22,7 @@ start until that call is answered.
 | 5 | **npm provenance** | publish from Actions with OIDC instead of a laptop token | — | mechanics |
 | 6 | **Awesome-list** | submit to an existing awesome list | a stable API | external |
 | 7 | **Prose sweep for 1.0** | move supporting narrative out of this file and the source headers into `todo.claude` | — | no release |
+| 8 | **Browser bundle** | ship one prebuilt file so no CDN can split `temporal-polyfill` | a shape call | mechanics |
 
 **Row 4 is measured, not a guess.** `markdownlint-cli2` catches the double-blank-line class
 (`MD012`) and would have caught one of the two Markdown defects this PR shipped and then fixed. It
@@ -51,6 +52,15 @@ the DAG sense; the order is speed-to-usable.
 additive and reverse no documented promise. Accepting `YYYY-Www-D` as INPUT is a different animal:
 it lands in `bareDay`, so it widens all 69 exports at once, exactly as SQL DATETIME did. The
 additive half is the cheaper, safer start.
+
+**Row 8, noted 2026-09-05.** The page works because a CDN inlines for us, not because daymath ships
+something that cannot be split. `README.md` under Requirements holds the mechanism and the measured
+CDN table; do not restate them here. The shape call is Lee's and it is not small: daymath is one
+source file with no build step today, `files` lists three entries, and a `dist` reverses that. It
+needs a new gated row in `scripts/bundle-size.mjs`, whose own header warns that byte counts do not
+transfer between experiments. Research it after the demo fix publishes, so the comparison runs
+against a live build. The other half is not ours: report the duplicate-copy behaviour to
+`temporal-polyfill` and to jsDelivr, because every package importing two `fns` subpaths meets it.
 
 **Row 7, noted 2026-08-09.** This file and several source headers carry the REASONING behind a
 decision as well as the decision. The reasoning belongs in the local `todo.claude`, which is the

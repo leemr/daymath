@@ -224,13 +224,16 @@
       <pre id="out" class="ok">Loading daymath…</pre>
 
       <footer>
-        Loads <code>daymath</code> from jsDelivr (published npm). Source for this
+        Loads <code>daymath</code> from esm.sh (published npm). Source for this
         page: <code>docs/index.html</code> on GitHub Pages.
       </footer>
     </main>
 
     <script type="module">
-      import * as daymath from 'https://cdn.jsdelivr.net/npm/daymath/+esm'
+      // esm.sh `?bundle`, not jsDelivr `+esm`. jsDelivr builds each temporal-polyfill
+      // subpath as its own bundle, so `fns/PlainDate` rejects the calendar `fns/Calendar`
+      // makes and every date throws `Invalid calling context`. `?bundle` inlines one copy.
+      import * as daymath from 'https://esm.sh/daymath?bundle'
 
       const dateEl = document.getElementById('date')
       const amountEl = document.getElementById('amount')
@@ -277,7 +280,10 @@
               show(false, 'Unknown op')
           }
         } catch (err) {
-          show(false, String(err && err.message ? err.message : err))
+          // Print the cause chain. A bare message hid a broken CDN build behind "invalid date".
+          const chain = []
+          for (let e = err; e; e = e.cause) chain.push(String(e && e.message ? e.message : e))
+          show(false, chain.join('\ncaused by: '))
         }
       }
 
