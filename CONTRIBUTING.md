@@ -45,3 +45,7 @@ CI uploads `coverage/lcov.info` from the Node 24 job. **Linked** for this repo (
 |----------|------|-----|
 | npmjs.com | `daymath` | Laptop `npm publish` (or future GHA provenance — see FUTURE.md) |
 | GitHub Packages | `@leemr/daymath` | Release publish **or** Actions → `publish-github-packages` (not both for the same version) |
+
+After a publish, run `npm run test:demo`. It loads the demo page's own CDN URL and checks the
+published build against the source. A CDN needs a few minutes to rebuild a new version, so give it
+that before reading a red run as real. Actions → `demo-page` runs the same check.

@@ -53,19 +53,14 @@ additive and reverse no documented promise. Accepting `YYYY-Www-D` as INPUT is a
 it lands in `bareDay`, so it widens all 69 exports at once, exactly as SQL DATETIME did. The
 additive half is the cheaper, safer start.
 
-**Row 8 exists because the demo broke, and the workaround is a CDN choice rather than a fix.** The
-page now loads from `https://esm.sh/daymath?bundle`, which inlines one copy of everything, and
-`npm run test:demo` keeps that honest. jsDelivr's `+esm` endpoint still hands out a broken daymath,
-because it builds each subpath of a dependency as a separate bundle with its own private copy, and
-`temporal-polyfill` publishes its `fns` API only as subpaths (`temporal-polyfill/fns` is in the
-export map but its file is an empty stub). So daymath cannot pick an import spelling that avoids
-the split; either a CDN inlines for us, or we ship a build that already has. The shape call is
-Lee's and it is not small: daymath is one source file with no build step today, `files` lists three
-entries, and a `dist` reverses that. It also needs a new gated row in `scripts/bundle-size.mjs`,
-whose own header warns that byte counts do not transfer between experiments. **Research this after
-the demo fix publishes**, so the comparison is made against a live build rather than a guess. The
-other half is not ours at all: raise the duplicate-copy behaviour with `temporal-polyfill`, and
-with jsDelivr, because every package importing two `fns` subpaths meets the same wall.
+**Row 8, noted 2026-09-05.** The page works because a CDN inlines for us, not because daymath ships
+something that cannot be split. `README.md` under Requirements holds the mechanism and the measured
+CDN table; do not restate them here. The shape call is Lee's and it is not small: daymath is one
+source file with no build step today, `files` lists three entries, and a `dist` reverses that. It
+needs a new gated row in `scripts/bundle-size.mjs`, whose own header warns that byte counts do not
+transfer between experiments. Research it after the demo fix publishes, so the comparison runs
+against a live build. The other half is not ours: report the duplicate-copy behaviour to
+`temporal-polyfill` and to jsDelivr, because every package importing two `fns` subpaths meets it.
 
 **Row 7, noted 2026-08-09.** This file and several source headers carry the REASONING behind a
 decision as well as the decision. The reasoning belongs in the local `todo.claude`, which is the

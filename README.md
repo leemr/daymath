@@ -367,8 +367,15 @@ The `?bundle` is not optional.
 ```html
 <script type="module">
   import * as daymath from 'https://esm.sh/daymath?bundle'
-  console.log(daymath.addDays('2026-08-06', 7)) // 2026-08-13
+  console.log(daymath.addDays('2026-08-06', 7))
 </script>
+```
+
+The answer that snippet logs, asserted by `npm run test:examples`, because a claim inside an html
+fence is not:
+
+```js
+addDays('2026-08-06', 7) // '2026-08-13'
 ```
 
 Most CDNs serve a daymath that throws on every date, and the message it throws is not helpful.
@@ -378,7 +385,15 @@ so the calendar built by one copy is unrecognisable to the other and `fromString
 `TypeError: Invalid calling context`. No import spelling avoids it: `temporal-polyfill/fns` is in
 the export map but its file is empty, so the separate subpaths are the whole `fns` API.
 
-Measured, and `npm run test:demo` re-checks the first row on a schedule:
+Measured 2026-09-05. `npm run test:demo` re-checks the first row on a schedule; the other four rows
+carry no gate, so re-measure them rather than trusting the table:
+
+```
+for u in "https://esm.sh/daymath?bundle" "https://unpkg.com/daymath?module" "https://esm.sh/daymath" "https://esm.run/daymath" "https://cdn.jsdelivr.net/npm/daymath/+esm"; do
+  node scripts/demo-page.mjs --url "$u" >/dev/null 2>&1 && echo "yes $u" || echo "no  $u"
+done
+```
+
 
 | URL | Works |
 | --- | --- |
