@@ -357,10 +357,35 @@ if (write) {
   // Measured before this counted: two edits from a clean tree, exit 0, and the sentence was false.
   const now = tallyOf(roster)
   const was = tallyOf(recorded)
+  // A claim that only skipped because THIS runtime lacks a global is a runtime fact, not drift.
+  // `Temporal` is the live case: it is native on Node 26 and absent on Node 22, so the same tree
+  // scored differently on each and the roster fired on the version difference. That blocked a
+  // release, because `prepublishOnly` runs this gate on whatever Node invoked npm.
+  //
+  // The exclusion is DIRECTIONAL, because the drift flips with which runtime recorded the roster.
+  // A key ADDED here skipped because the global is missing here. A key GONE here asserted because
+  // the global is present here. Either way the runtime explains it and no edit did.
+  //
+  // It is also tight. It reaches only `needs <name>` where `<name>` is a global whose presence
+  // explains that direction. A claim downgraded by deleting its literal skips as
+  // `prose, not a literal`, so the direction this roster exists to catch is untouched.
+  const globalNeeded = (key) => /\[needs ([A-Za-z_$][\w$]*)\]$/.exec(key)?.[1]
+  const explainedByRuntime = (key, wantMissing) => {
+    const name = globalNeeded(key)
+    return name !== undefined && (globalThis[name] === undefined) === wantMissing
+  }
   const added = []
   const gone = []
-  for (const [key, n] of now) for (let i = was.get(key) ?? 0; i < n; i++) added.push(key)
-  for (const [key, n] of was) for (let i = now.get(key) ?? 0; i < n; i++) gone.push(key)
+  for (const [key, n] of now) {
+    for (let i = was.get(key) ?? 0; i < n; i++) {
+      if (!explainedByRuntime(key, true)) added.push(key)
+    }
+  }
+  for (const [key, n] of was) {
+    for (let i = now.get(key) ?? 0; i < n; i++) {
+      if (!explainedByRuntime(key, false)) gone.push(key)
+    }
+  }
   if (added.length > 0 || gone.length > 0) {
     failures.push(
       `the unassertable roster moved, ${added.length} added and ${gone.length} gone\n` +
