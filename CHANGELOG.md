@@ -5,6 +5,28 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **`npm run test:examples:tz` runs every prose claim in three time zones, because the examples gate only ever ran in one.** That one is whatever the machine is set to, which is UTC in CI and something else on a laptop, so a claim whose answer moves with the zone passes in one place and fails in the other. Nothing in this repo could see that. It is not hypothetical: a README draft in this release asserted `new Date('2026-03-08').getDate() // 7`, which answers 7 behind UTC and 8 at or ahead of it, so it was green on a machine set to `America/New_York` and would have gone red in CI. **Proved to block by planting the opposite literal, `// 8`, which is the same defect pointing the other way.** With it in place the existing `test:examples` step passes under UTC — the zone CI runs — while the new one fails and names `Etc/GMT+12`. The old gate cannot catch this class at all; that is the whole argument for a second one.
+
+  **The zones are chosen, and every one holds a fixed offset all year.** `Etc/GMT+12` and `Pacific/Kiritimati` are the two ends of the IANA range, so a claim that holds in both holds in every zone between them, and `Asia/Kathmandu` is there because the minutes field is not always zero. A zone that shifts with daylight saving would test a different scenario in January than in July, so a defect could hide for half a year and then fail a run nobody caused — read any candidate's offset in both seasons before adding it, with the command in the header of `scripts/examples-tz.mjs`. Daylight saving is a second axis and is deliberately not covered; the header names `Australia/Lord_Howe` and `Antarctica/Troll` as the two worth reaching for if it ever is, because they shift by 30 and 120 minutes rather than the usual 60. `--write` is refused from this runner, so the unassertable roster can only ever be recorded in one zone.
+
+### Changed
+
+- **The README leads with the defect daymath prevents, and the reference material moved to `docs/`.** Reference outweighed the API by a wide margin — measure it with `awk '/^```/{f=!f} /^#{1,3} /&&!f{if(h)print len"\t"h; h=$0; len=0; next}{len++}' README.md | sort -rn | head -4`, where the fence toggle matters because without it a `#` comment inside a bash block is counted as a heading. The two calendar sections and the CDN forensics were the three largest and none of them is what a first reader needs, so they are now [docs/calendars.md](./docs/calendars.md) and [docs/cdn.md](./docs/cdn.md), each linked from the section it left behind. The opening is two `Date` results that are wrong and do not throw, then the daymath answers. The `day()` rules are behind a `<details>`, and the GitHub Packages block moved below the API. The badge row is unchanged: the `node` badge was cut and put back, because it renders the whole `engines` range including the gap at 22.0–22.11 — read it with `curl -s https://img.shields.io/node/v/daymath.json` rather than assuming a badge flattens it.
+
+  **Both new pages joined the examples gate in the same commit, and that is the point.** `PROSE_FILES` in `scripts/examples.mjs` now lists them. A moved example that stops being checked is a silent regression, and the roster diff is what makes it visible: run `npm run test:examples -- --skips` to see every claim the gate cannot assert, per file. Nothing moved off the roster in this change.
+
+  **The gate caught a wrong claim in the new opening, and a second check caught a worse one.** The first draft asserted `new Date(2026, 0, 31).setMonth(1)` was a date; `setMonth` returns epoch milliseconds, and the gate said so. The second draft opened with `new Date('2026-03-08').getDate()`, which is **timezone-dependent** — it answers 7 behind UTC and 8 at or ahead of it, so it passes here and fails in CI. No gate in this repo runs the fences under a second zone, so nothing would have caught it. Both examples are now zone-independent, constructed and read in local time, and the zone trap is stated in prose where no runner can be fooled by it. Check any new fence with `for tz in UTC Asia/Tokyo; do TZ=$tz node -e '…'; done` before trusting a green run.
+
+- **Release titles are `vX.Y.Z` again.** `scripts/release-check.mjs` prescribed `daymath X.Y.Z` from 0.7.2, which split the history. Every surface that shows a release title — the releases page, the repo sidebar, `releases.atom`, watcher mail — already names the repository, so the prefix repeated a word the reader can see, and it appears nowhere on npm. The two drifted titles were edited to match the rest; read them with `gh release list --repo leemr/daymath`.
+
+### Fixed
+
+- **`npm ci` no longer warns about the `esbuild` install script.** npm 11.19 gates install scripts behind an `allowScripts` field, so a clean clone printed four warning lines at every contributor. Nothing was broken — the `@esbuild/<platform>` optional dependency carries the prebuilt binary and the `postinstall` is only a fallback — so this is noise removal, not a fix to a failure. The entry is unpinned on purpose: `npm install-scripts approve esbuild` writes `esbuild@<version>`, which goes stale on the next Dependabot bump and brings the warning back.
+
 ## [0.7.3] — 2026-09-06
 
 ### Added

@@ -23,6 +23,7 @@ start until that call is answered.
 | 6 | **Awesome-list** | submit to an existing awesome list | a stable API | external |
 | 7 | **Prose sweep for 1.0** | move supporting narrative out of this file and the source headers into `todo.claude` | — | no release |
 | 8 | **Browser bundle** | ship one prebuilt file so no CDN can split `temporal-polyfill` | a shape call | mechanics |
+| 9 | **Bundlephobia listing** | be one of the packages bundlephobia offers on the date-fns page | a popularity gate | external |
 
 **Row 4 is measured, not a guess.** `markdownlint-cli2` catches the double-blank-line class
 (`MD012`) and would have caught one of the two Markdown defects this PR shipped and then fixed. It
@@ -137,6 +138,29 @@ go red. Keep this one green and the hazard stays closed.
 
 - **Awesome-list PR** (not “awesome-daymath”) when API feels stable.  
 - Confirm **repo Social preview** still set to `docs/og.png` if unfurls for github.com/leemr/daymath look wrong.
+
+**Row 9, the bundlephobia listing, is blocked on popularity and nothing else.** Two mechanisms,
+and only one of them is gated. `getInCategoryMap` in their
+`server/middlewares/similar-packages/similarPackages.middleware.ts` runs first and returns a
+direct hit for any package named in a category's `similar` array. Being in that array is what puts
+daymath on the date-fns, dayjs, luxon, moment and `@formkit/tempo` pages. Scoring is the other
+mechanism, and it only decides which packages daymath's own page offers.
+
+Their triage bot wants **at least 1,000 weekly npm downloads or 100 GitHub stars**. Read both
+rather than trusting this line:
+
+```
+npm view daymath
+gh api repos/leemr/daymath --jq '{stars: .stargazers_count}'
+```
+
+Issue #978 suggested `qrono` for the same category and pastelsky declined it on that ground alone:
+*"its current adoption is too limited to displace the established, actively maintained date-time
+utilities already recommended."* So file this when a threshold is cleared, not before. A decline on
+record makes the second ask harder.
+
+The **scoring** half is a separate, ungated defect and is being sent as a PR from
+`~/leemr/bundlephobia`. It does not carry this request.
 
 **Done:** topics, homepage, badges, llms.txt, README, Pages play, `docs/og.png` + og meta.
 

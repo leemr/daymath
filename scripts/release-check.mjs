@@ -98,7 +98,10 @@ steps.push([
 ])
 steps.push([`commit as \`Release daymath ${version}\` and push master`, released])
 steps.push([
-  `gh release create v${version} --title "daymath ${version}" --target $(git rev-parse master)`,
+  // The title repeats the tag on purpose. Every surface that shows it — the releases page, the
+  // sidebar, the Atom feed, watcher mail — already names the repository, so a `daymath ` prefix
+  // only repeats a word the reader can see. v0.0.1 through v0.7.1 use this form.
+  `gh release create v${version} --title "v${version}" --target $(git rev-parse master)`,
   tagged,
 ])
 steps.push(['cd into this directory, then `npm publish`', onNpm])
