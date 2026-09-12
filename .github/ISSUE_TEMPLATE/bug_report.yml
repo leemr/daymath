@@ -1,0 +1,61 @@
+name: Bug report
+description: A daymath call answers wrongly, throws when it should not, or accepts what it should refuse
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        daymath answers in ISO 8601 days and takes no `Date` outside `day()`. If a call refused a
+        `Date`, a time zone, or `'11/12/2026'`, that is the design — see the README before filing.
+
+  - type: input
+    id: version
+    attributes:
+      label: daymath version
+      description: Output of `npm ls daymath`.
+      placeholder: '0.7.3'
+    validations:
+      required: true
+
+  - type: input
+    id: runtime
+    attributes:
+      label: Runtime
+      description: Output of `node -v`, `deno --version` or `bun --version`.
+      placeholder: 'Node v26.8.2'
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: The call, and what it answered
+      description: >
+        One expression per line, with the answer you got beside it. Paste what ran, not a
+        description of it.
+      render: js
+      placeholder: |
+        addMonths('2026-01-31', 1)   // got '2026-03-03'
+    validations:
+      required: true
+
+  - type: input
+    id: expected
+    attributes:
+      label: What it should have answered
+      placeholder: "'2026-02-28'"
+    validations:
+      required: true
+
+  - type: textarea
+    id: zone
+    attributes:
+      label: Does it depend on the time zone?
+      description: >
+        Re-run under a second zone and paste both results. A date defect that moves with the zone
+        has a different cause from one that does not.
+      render: shell
+      placeholder: |
+        for tz in UTC America/New_York Asia/Tokyo; do TZ=$tz node repro.mjs; done
+    validations:
+      required: false
