@@ -13,19 +13,38 @@ No `Date`. No time zones. No silent “local now”. ISO 8601 ❤️
 
 [**Play →**](https://leemr.github.io/daymath/) · [npm](https://www.npmjs.com/package/daymath) · [Changelog](./CHANGELOG.md) · [Contributing](./CONTRIBUTING.md) · [FUTURE](./FUTURE.md)
 
+## A hire date is not a timestamp
+
+Both of these are real, and neither one throws.
+
+```js
+new Date(2026, 1, 30).getDate()     // 2  — February 30 quietly becomes March 2
+new Date(2026, 0, 31).getMonth()    // 0  — January is month zero
+```
+
+daymath refuses the first and answers the second the way you would say it out loud.
+
+```js
+isValid('2026-02-30')               // false
+getMonth('2026-01-31')              // 1
+```
+
+There is a third one that no example can show you, because the answer depends on where you run it.
+`new Date('2026-03-08')` parses as midnight **UTC**, so `.getDate()` says 7 in every zone behind
+UTC and 8 in every zone at or ahead of it. The same line, two answers, no error.
+
+A hire date, a passport expiry, a trip day are **calendar** values. They have no instant and no
+zone. daymath only does plain days, as ISO strings.
+
+| daymath has no | so you cannot |
+|---|---|
+| `Date` | leak a time zone into a birthday |
+| time zones | get a different answer on a different server |
+| a silent local now | write a test that fails at midnight |
+
 ```bash
 npm install daymath
 ```
-
-Same code also publishes to **GitHub Packages** as `@leemr/daymath` (scoped; see [GitHub npm registry docs](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-npm-registry)):
-
-```bash
-# one-time: map the scope (auth with a PAT that has read:packages, or GITHUB_TOKEN in Actions)
-echo '@leemr:registry=https://npm.pkg.github.com' >> .npmrc
-npm install @leemr/daymath
-```
-
-Most people should keep using **`daymath` on npmjs**.
 
 ```js
 import { day, addDays, addMonths, differenceInDays, isSameDay } from 'daymath'
@@ -36,8 +55,9 @@ differenceInDays('2026-08-06', '2026-08-01') // 5
 isSameDay('2026-08-06', '2026-08-06')        // true
 ```
 
-`day` is the way in. It turns a moment into a day, and it is the only function
-that reads a clock.
+## `day` is the way in
+
+It turns a moment into a day, and it is the only function that reads a clock.
 
 Start here. No arguments means today, in UTC.
 
@@ -56,22 +76,6 @@ day('2026-05-05')                      // '2026-05-05'  already a day
 day('2026-08-08 12:00:00')             // '2026-08-08'  a SQLite DATETIME
 ```
 
-A **SQLite `DATETIME` goes straight in**, and so does the whole surface — the clock
-is dropped by the same funnel every export shares, so this is not a `day()` feature.
-
-```js
-addDays(row.created_at, 30)            // '2026-09-07'  from '2026-08-08 12:00:00'
-startOfMonth('2026-08-08 01:57:31.913') // '2026-08-01'  strftime('%…%H:%M:%f')
-getYear('2026-08-08t12:00')            // 2026          T, t or a space; same rule
-```
-
-`datetime()`, `CURRENT_TIMESTAMP` and `strftime('%Y-%m-%d %H:%M:%f')` all emit that
-shape, so a column value needs no reshaping first. **Pass a zone with one and it
-throws.** Naming a zone means convert, and a clock with no zone gives nothing to
-convert from — and `datetime()` defaults to UTC, so a silent answer would hand the
-UTC day to the one caller who asked for a local one. Put the zone in the string
-(`Z`, an offset, or `[Zone]`) and it converts normally.
-
 Name a zone when the answer depends on one.
 
 ```js
@@ -86,7 +90,26 @@ UTC is still not your day for part of every day — it runs ahead of `America/Ne
 for 16.7% of the day, and behind `Asia/Tokyo` for 37.5% — so name your zone when
 that matters.
 
-Six rules worth knowing:
+### A SQLite `DATETIME` goes straight in
+
+So does the whole surface. The clock is dropped by the same funnel every export shares, so this is
+not a `day()` feature.
+
+```js
+addDays(row.created_at, 30)            // '2026-09-07'  from '2026-08-08 12:00:00'
+startOfMonth('2026-08-08 01:57:31.913') // '2026-08-01'  strftime('%…%H:%M:%f')
+getYear('2026-08-08t12:00')            // 2026          T, t or a space; same rule
+```
+
+`datetime()`, `CURRENT_TIMESTAMP` and `strftime('%Y-%m-%d %H:%M:%f')` all emit that
+shape, so a column value needs no reshaping first. **Pass a zone with one and it
+throws.** Naming a zone means convert, and a clock with no zone gives nothing to
+convert from — and `datetime()` defaults to UTC, so a silent answer would hand the
+UTC day to the one caller who asked for a local one. Put the zone in the string
+(`Z`, an offset, or `[Zone]`) and it converts normally.
+
+<details>
+<summary><strong>The six rules behind that</strong> — how <code>day()</code> reads each input shape</summary>
 
 - A **number is epoch milliseconds**, exactly as `new Date(n)` reads it. A seconds
   timestamp read as milliseconds lands in 1970, with no error. daymath states the
@@ -117,39 +140,11 @@ it accepts a whole timestamp and reads the zone out of it, so
 implementations — `'T12:00:00Z'` is a zone to native Temporal and not to the
 polyfill — which would make the answer depend on the runtime.
 
+</details>
+
 ```bash
 node examples/basic.mjs   # from a clone
 ```
-
-## Why
-
-`Date` is a timestamp. Hire dates, passport expiry, trip days are **calendar** values. daymath only does plain days as ISO strings.
-
-| In | Out |
-|----|-----|
-| `YYYY-MM-DD` or expanded `±YYYYYY-MM-DD` | same forms (Temporal `toString`) |
-| or `Temporal.PlainDate`, from any implementation | string |
-
-A `Date` **throws** everywhere except `day()`, including in `isValid`.
-`isValid('asdf')` → `false`.
-
-`day()` is the single door a `Date` comes through, and it makes you name the zone
-or take the stated UTC default. Nothing carries a zone past that point, and
-nothing gives you a `Date` back.
-
-Range: `-271821-04-19` … `+275760-09-13` — the `Temporal.PlainDate` limit, roughly ±10⁸ days from the epoch. A day outside it throws a `RangeError`.
-
-## date-fns parity (names, not `Date`)
-
-| Topic | daymath |
-|-------|---------|
-| Values | ISO day **strings**, not `Date` |
-| `isSameDay` | Alias of `isEqual` |
-| `isValid` | Valid daymath day; **`Date` throws** |
-| `getMonth` / `setMonth` | **1–12** (1 = January) — ISO, **not** date-fns |
-| `getDay` | **1–7** (1 = Monday, 7 = Sunday) — ISO, **not** date-fns |
-| `weekStartsOn` | default `7` (Sunday); `0` also accepted |
-| Intervals | `{ start, end }` |
 
 ## API
 
@@ -173,6 +168,31 @@ Range: `-271821-04-19` … `+275760-09-13` — the `Temporal.PlainDate` limit, r
 
 Amounts are finite integers.
 
+### What goes in, what comes out
+
+| In | Out |
+|----|-----|
+| `YYYY-MM-DD` or expanded `±YYYYYY-MM-DD` | same forms (Temporal `toString`) |
+| or `Temporal.PlainDate`, from any implementation | string |
+
+A `Date` **throws** everywhere except `day()`, including in `isValid`.
+`isValid('asdf')` → `false`. Nothing carries a zone past `day()`, and nothing gives you a `Date`
+back.
+
+Range: `-271821-04-19` … `+275760-09-13` — the `Temporal.PlainDate` limit, roughly ±10⁸ days from the epoch. A day outside it throws a `RangeError`.
+
+### date-fns parity (names, not `Date`)
+
+| Topic | daymath |
+|-------|---------|
+| Values | ISO day **strings**, not `Date` |
+| `isSameDay` | Alias of `isEqual` |
+| `isValid` | Valid daymath day; **`Date` throws** |
+| `getMonth` / `setMonth` | **1–12** (1 = January) — ISO, **not** date-fns |
+| `getDay` | **1–7** (1 = Monday, 7 = Sunday) — ISO, **not** date-fns |
+| `weekStartsOn` | default `7` (Sunday); `0` also accepted |
+| Intervals | `{ start, end }` |
+
 ## Temporal
 
 Built on [`temporal-polyfill/fns`](https://www.npmjs.com/package/temporal-polyfill), the functional
@@ -187,166 +207,16 @@ own instance, so it never depends on `instanceof` agreeing across copies. The co
 `Temporal.Now.plainDateISO()`: daymath has no `today()` on purpose, so that is where a caller
 gets one.
 
-### Calendars
-
-Temporal can put a calendar on a `PlainDate`. The same *day* then carries different numbers:
-
-| calendar | year | month | day | `toString()` | daymath |
-|---|---|---|---|---|---|
-| `iso8601` | 2026 | 1 | 31 | `2026-01-31` | accepted |
-| `buddhist` | **2569** | 1 | 31 | `2026-01-31[u-ca=buddhist]` | **accepted** |
-| `roc` | **115** | 1 | 31 | `2026-01-31[u-ca=roc]` | **accepted** |
-| `japanese` | 2026 | 1 | 31 | `2026-01-31[u-ca=japanese]` | **accepted** |
-| `gregory` | 2026 | 1 | 31 | `2026-01-31[u-ca=gregory]` | **accepted** |
-| `hebrew` | 5786 | **5** | **13** | `2026-01-31[u-ca=hebrew]` | refused |
-| `chinese` | 2025 | **13** | **13** | `2026-01-31[u-ca=chinese]` | refused |
-
-**daymath accepts a calendar that only relabels the year, and refuses one that renumbers.** The
-line is measured at runtime, not held as a list, so a calendar CLDR adds later needs no code
-change here. Two conditions, both required, on nine probe dates spanning 1900 to 2100:
-
-1. **Month and day equal the ISO fields.** A month *count* would be wrong: `hebrew` is lunisolar,
-   so it has 12 months in 2025 and 13 in 2027.
-2. **The year offset is constant.** Two probe pairs straddle a Japanese era boundary, because an
-   era change inside one ISO year is what separates a label from a renumbering.
-
-For the accepting family only the year label moves, so every export still answers honestly, and
-the annotation rides along:
-
-```js
-getYear('2026-01-31[u-ca=buddhist]')        // 2569  not 2026
-getMonth('2026-01-31[u-ca=buddhist]')       // 1
-addDays('2026-01-31[u-ca=buddhist]', 1)     // '2026-02-01[u-ca=buddhist]'
-setYear('2026-01-31[u-ca=buddhist]', 2570)  // '2027-01-31[u-ca=buddhist]'
-getYear('2026-01-31[u-ca=roc]')             // 115
-getYear('2026-01-31[u-ca=japanese]')        // 2026
-```
-
-A renumbering calendar is refused, and the message names the calendar and the way out. A calendar
-this runtime cannot build at all gets its own message, so a typo does not read as a renumbering
-calendar:
-
-```js
-getMonth('2026-01-31[u-ca=hebrew]')
-// RangeError: daymath: date calendar "hebrew" renumbers months or days, so daymath
-//             cannot answer a day in it (convert with withCalendar('iso8601'))
-
-getYear('2026-01-31[u-ca=buddhst]')
-// RangeError: daymath: date calendar "buddhst" is not a calendar this runtime knows
-//             (convert with withCalendar('iso8601'))
-
-format(hebrewDate.withCalendar('iso8601'))   // '2026-01-31'
-```
-
-**A day is the same day whatever its year is labelled, so a mixed pair measures rather than
-throwing.** Temporal's own `since` refuses this with `Mismatched calendars`, and its `equals`
-compares the calendar as well as the day. Neither matters to a day count, so daymath normalises
-both sides for measurement. Only the exports that read or write a field honour the label:
-
-```js
-differenceInDays('2026-03-01', '2026-01-31[u-ca=buddhist]')   // 29
-isEqual('2026-01-31[u-ca=buddhist]', '2026-01-31')            // true
-```
-
-**The object form is a different day, and that is Temporal's rule, not daymath's.** A string's
-date part is always ISO; the annotation changes how fields are *read*, never how the string
-*parses*:
-
-```js
-Temporal.PlainDate.from('2026-01-31[u-ca=buddhist]')            // ISO 2026-01-31, .year 2569
-Temporal.PlainDate.from({year: 2026, month: 1, day: 31,
-                         calendar: 'buddhist'})                  // ISO 1483-01-31, .year 2026
-```
-
-543 years apart. daymath takes strings and `PlainDate` objects, never the fields form, so it
-inherits Temporal's rule and stays consistent with it.
-
-`[u-ca=iso8601]` is accepted and dropped rather than carried. Temporal writes it itself for
-`toString({ calendarName: 'always' })`, and daymath already answers in it:
-
-```js
-const written = plainDate.toString({ calendarName: 'always' })  // '2026-01-31[u-ca=iso8601]'
-getYear(written)                                                // 2026
-```
-
-A calendar is judged where it is **applied**. On a day string it is, and with a `[Zone]` bracket
-it is. Without a bracket the string names an `Instant`, which has no year, month or day for a
-calendar to renumber, so the annotation is inert.
-
-**`day()` accepts every annotation the other exports accept, and drops it from the result.** It is
-the normaliser: a moment converts to a plain ISO day, and so does a day. One rule, three input
-shapes:
-
-```js
-day('2026-08-08T20:00:00Z[u-ca=buddhist]')                  // '2026-08-08'
-day('2026-08-08T12:00[America/New_York][u-ca=buddhist]')    // '2026-08-08'
-day('2026-08-08[u-ca=buddhist]')                            // '2026-08-08'
-day('1999-06-06[Asia/Tokyo][u-ca=hebrew]')                  // throws
-
-parse('2026-08-08[u-ca=buddhist]')     // '2026-08-08[u-ca=buddhist]'  parse keeps it
-```
-
-`parse` validates and preserves. `day()` normalises. Every other export carries the annotation,
-because the caller asked for that numbering.
-
-### Working in a non-ISO calendar
-
-**Do not pass the calendar's own year as a bare ISO year.** This is the one way to get a wrong
-answer with no error, and it is why the annotation is not decoration.
-
-Buddhist 2567 is ISO 2024, which is a leap year. The Buddhist year is ISO + 543, and 543 mod 4 is
-3, so the leap years land in different places:
-
-| call | bare `2567` | annotated, the real Buddhist 2567 |
-|---|---|---|
-| `isLeapYear` | `false` | `true` |
-| `getDaysInMonth` for February | `28` | `29` |
-| `parse('…-02-29')` | throws `invalid date` | `2024-02-29[u-ca=buddhist]` |
-| `addDays(Feb 28, 1)` | `2567-03-01` | `2024-02-29[u-ca=buddhist]` |
-
-**The two disagree in 49 of the 101 Buddhist years from 2500 to 2600.** Nothing throws on the
-bare form, and `addDays('2567-02-28', 1)` answering `2567-03-01` looks reasonable, so a date lands
-one day early for the rest of that year. Every other month is identical, because February is the
-only month whose length varies.
-
-**A `Date` cannot help you here, because a `Date` has no calendar.** It is one number of
-milliseconds. `getUTCFullYear()` is always Gregorian, so a Thai user's `Date` already holds `2026`.
-The `2569` exists only at display time, when `Intl` formats it:
-
-```js
-new Intl.DateTimeFormat('th-TH-u-ca-buddhist', {dateStyle: 'short'}).format(d)   // '8/8/69'
-```
-
-So the recipe is:
-
-1. From a `Date` or a timestamp, call `day(…)`. You get a plain ISO day.
-2. To work in Buddhist years, annotate that day: `'2026-08-08[u-ca=buddhist]'`. Now `getYear` is
-   `2569`, `isLeapYear` is right, and every export carries the annotation through.
-3. **From a Buddhist year *number*, use Temporal's fields form.** This is the one place the
-   fields/string asymmetry helps rather than traps:
-
-```js
-Temporal.PlainDate.from({year: 2569, month: 8, day: 8, calendar: 'buddhist'}).toString()
-// '2026-08-08[u-ca=buddhist]'      <- and daymath accepts the object directly too
-```
-
-4. For display, use `Intl`. daymath does no localised formatting.
-
-One more trap in the same family: `'2569-08-08[u-ca=buddhist]'` is a valid string, and its
-`getYear` is **3112**. The date part is ISO 2569, and the annotation adds 543 on top.
-
-Supporting these calendars costs **4.2 kB gzip**, because daymath resolves them with `getAny`, the
-`fns` resolver that carries every calendar's data. The narrower resolvers cannot serve the rule: on
-a runtime without native `Temporal` they drop the annotation instead of refusing it, so the same
-program would answer 2569 on one lane and 2026 on another. `getAny` answers identically everywhere,
-which is the point.
-
 Error messages quote no Temporal text, because implementations word the same failure
 differently. The original error is on `cause`.
 
 Behaviour is checked against a recorded baseline on Node, Deno (which ships **native**
 Temporal) and Bun — every export, `npm run test:runtimes`. The exact call count lives
 in `scripts/cross-runtime.baseline.json`, which is the only place it cannot go stale.
+
+**Calendars:** daymath accepts a calendar that only relabels the year, such as `buddhist` or `roc`,
+and refuses one that renumbers months or days. The rule, the measured line, and the one trap that
+answers wrongly with no error are in **[docs/calendars.md](./docs/calendars.md)**.
 
 ## Requirements
 
@@ -362,8 +232,6 @@ Node 18 was supported through 0.3.0 and is dropped here. It went end-of-life in 
 
 ### In a browser, from a CDN
 
-The `?bundle` is not optional.
-
 ```html
 <script type="module">
   import * as daymath from 'https://esm.sh/daymath?bundle'
@@ -371,47 +239,9 @@ The `?bundle` is not optional.
 </script>
 ```
 
-The answer that snippet logs, asserted by `npm run test:examples`, because a claim inside an html
-fence is not:
-
-```js
-addDays('2026-08-06', 7) // '2026-08-13'
-```
-
-Most CDNs serve a daymath that throws on every date. What it throws is
-`TypeError: Invalid calling context`, which names the implementation. daymath will not relabel a
-broken Temporal as your bad input, and it will not answer `false` for a day it cannot read.
-
-daymath imports two subpaths of `temporal-polyfill`, `fns/PlainDate` and `fns/Calendar`. A CDN that
-rebuilds each subpath into its own bundle gives each one a private copy of the polyfill's internals,
-so the calendar built by one copy is unrecognisable to the other and `fromString` throws
-`TypeError: Invalid calling context`. No import spelling avoids it: `temporal-polyfill/fns` is in
-the export map but its file is empty, so the separate subpaths are the whole `fns` API.
-
-Measured 2026-09-05. `npm run test:demo` re-checks the first row on a schedule; the other four rows
-carry no gate, so re-measure them rather than trusting the table:
-
-```
-for u in "https://esm.sh/daymath?bundle" "https://unpkg.com/daymath?module" "https://esm.sh/daymath" "https://esm.run/daymath" "https://cdn.jsdelivr.net/npm/daymath/+esm"; do
-  node scripts/demo-page.mjs --url "$u" >/dev/null 2>&1 && echo "yes $u" || echo "no  $u"
-done
-```
-
-
-| URL | Works |
-| --- | --- |
-| `https://esm.sh/daymath?bundle` | yes |
-| `https://unpkg.com/daymath?module` | yes |
-| `https://esm.sh/daymath` | no |
-| `https://esm.run/daymath` | no |
-| `https://cdn.jsdelivr.net/npm/daymath/+esm` | no |
-
-A bundler is unaffected. It resolves both subpaths through one copy in `node_modules`, which is why
-every gate in this repo stayed green while the demo page was dead.
-
-`npm run test:split` closes that hole. It builds the split on disk from `node_modules`, so it needs
-no network and no published build, then it checks one law across the API: a broken Temporal must
-never make daymath answer wrongly or blame the caller.
+**The `?bundle` is not optional.** Most CDNs split `temporal-polyfill` into two private copies and
+serve a daymath that throws on every date. Which CDNs work, why, and how to re-measure them are in
+**[docs/cdn.md](./docs/cdn.md)**. A bundler is unaffected.
 
 ## Types & tests
 
@@ -427,6 +257,18 @@ npm run test:coverage   # c8: 100% lines/funcs/branches on index.js + lcov
 CI uploads coverage to [Codecov](https://codecov.io/gh/leemr/daymath) (see [CONTRIBUTING.md](./CONTRIBUTING.md) for one-time app/token setup).
 
 PRs welcome via fork — see [CONTRIBUTING.md](./CONTRIBUTING.md). Security reports: [SECURITY.md](./SECURITY.md).
+
+## Also on GitHub Packages
+
+The same code publishes as `@leemr/daymath` (scoped; see [GitHub npm registry docs](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-npm-registry)):
+
+```bash
+# one-time: map the scope (auth with a PAT that has read:packages, or GITHUB_TOKEN in Actions)
+echo '@leemr:registry=https://npm.pkg.github.com' >> .npmrc
+npm install @leemr/daymath
+```
+
+Most people should keep using **`daymath` on npmjs**.
 
 ## License
 
