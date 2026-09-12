@@ -30,9 +30,13 @@ import { fileURLToPath } from 'node:url'
  * not always zero.
  */
 const ZONES = [
-  ['Etc/GMT+12', 'the furthest zone behind UTC'],
-  ['Pacific/Kiritimati', 'the furthest zone ahead of UTC'],
-  ['Asia/Kathmandu', 'a quarter-hour offset, so the minutes field is not zero'],
+  ['Etc/GMT+12', -720, 'the furthest zone behind UTC'],
+  ['Pacific/Kiritimati', 840, 'the furthest zone ahead of UTC'],
+  [
+    'Asia/Kathmandu',
+    345,
+    'a quarter-hour offset, so the minutes field is not zero',
+  ],
 ]
 
 // `TZ` is read from the system zoneinfo, which is NOT the table `Intl` uses. ICU still treats the
@@ -51,9 +55,54 @@ if (process.argv.includes('--write')) {
   process.exit(2)
 }
 
+/**
+ * Read the offset a child process ACTUALLY gets for `zone`, in minutes east of UTC, at two dates
+ * six months apart.
+ *
+ * THIS IS THE GUARD, NOT A NICETY. Node falls back to UTC without a word when it cannot resolve a
+ * zone — `TZ=Not/AZone node -e "…getTimezoneOffset()"` prints an offset of 0 and exits 0. A runner
+ * with a trimmed zoneinfo would therefore run this whole gate three times in UTC and report three
+ * passes, because every claim it checks is zone-independent by design. A gate that cannot fail is
+ * worse than no gate, so the offset is asserted before the result is believed.
+ */
+function offsetsFor(zone) {
+  const probe = spawnSync(
+    process.execPath,
+    [
+      '-e',
+      "const o = d => -new Date(d).getTimezoneOffset();" +
+        "process.stdout.write(o('2026-01-15T00:00:00Z') + ' ' + o('2026-07-15T00:00:00Z'))",
+    ],
+    { env: { ...process.env, TZ: zone }, encoding: 'utf8' },
+  )
+
+  if (probe.status !== 0) return null
+  return probe.stdout.trim().split(' ').map(Number)
+}
+
 let failed = 0
 
-for (const [zone, why] of ZONES) {
+for (const [zone, expected, why] of ZONES) {
+  const offsets = offsetsFor(zone)
+
+  if (!offsets || offsets.some(offset => offset !== expected)) {
+    failed++
+    console.log(`FAIL ${zone} — ${why}`)
+    console.log(
+      `       this runtime resolves it to ${offsets ? offsets.join(' and ') : 'nothing'}, not ${expected}.`,
+    )
+    console.log(
+      '       An offset of 0 means the zone is missing and Node fell back to UTC in silence,',
+    )
+    console.log(
+      '       so the run below would have passed without testing a second zone at all.',
+    )
+    console.log(
+      '       Two offsets that differ mean the zone observes daylight saving and does not belong here.',
+    )
+    continue
+  }
+
   const run = spawnSync(process.execPath, [gate], {
     env: { ...process.env, TZ: zone },
     encoding: 'utf8',
@@ -62,7 +111,7 @@ for (const [zone, why] of ZONES) {
   const output = `${run.stdout}${run.stderr}`.trim()
 
   if (run.status === 0) {
-    console.log(`ok   ${zone} — ${why}`)
+    console.log(`ok   ${zone} at ${expected} min — ${why}`)
   } else {
     failed++
     console.log(`FAIL ${zone} — ${why}`)
