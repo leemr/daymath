@@ -32,11 +32,7 @@ import { fileURLToPath } from 'node:url'
 const ZONES = [
   ['Etc/GMT+12', -720, 'the furthest zone behind UTC'],
   ['Pacific/Kiritimati', 840, 'the furthest zone ahead of UTC'],
-  [
-    'Asia/Kathmandu',
-    345,
-    'a quarter-hour offset, so the minutes field is not zero',
-  ],
+  ['Asia/Kathmandu', 345, 'a quarter-hour offset, so the minutes field is not zero'],
 ]
 
 // `TZ` is read from the system zoneinfo, which is NOT the table `Intl` uses. ICU still treats the
@@ -70,7 +66,7 @@ function offsetsFor(zone) {
     process.execPath,
     [
       '-e',
-      "const o = d => -new Date(d).getTimezoneOffset();" +
+      'const o = d => -new Date(d).getTimezoneOffset();' +
         "process.stdout.write(o('2026-01-15T00:00:00Z') + ' ' + o('2026-07-15T00:00:00Z'))",
     ],
     { env: { ...process.env, TZ: zone }, encoding: 'utf8' },
@@ -85,7 +81,7 @@ let failed = 0
 for (const [zone, expected, why] of ZONES) {
   const offsets = offsetsFor(zone)
 
-  if (!offsets || offsets.some(offset => offset !== expected)) {
+  if (!offsets || offsets.some((offset) => offset !== expected)) {
     failed++
     console.log(`FAIL ${zone} — ${why}`)
     console.log(
