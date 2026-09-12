@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security report
+    url: https://github.com/leemr/daymath/security/advisories/new
+    about: Report a vulnerability privately. Do not open a public issue for one.
+  - name: Backlog and known trade-offs
+    url: https://github.com/leemr/daymath/blob/master/FUTURE.md
+    about: Open work, the blocker on each row, and the semver cost of changing it.

@@ -43,6 +43,13 @@ jobs:
       - name: Examples (every @example executed and asserted)
         if: matrix.node == 26
         run: npm run test:examples
+      # The step above runs in the runner's zone, which is UTC, so a claim that answers differently
+      # behind UTC passes here and fails on a contributor's machine. Proved by planting
+      # `new Date('2026-03-08').getDate() // 8`: the step above stays green and this one names
+      # Etc/GMT+12. Three fixed-offset zones, spanning the whole IANA range.
+      - name: Examples across time zones
+        if: matrix.node == 26
+        run: npm run test:examples:tz
       - run: npm test
       - name: Cross-runtime baseline
         run: npm run test:runtimes

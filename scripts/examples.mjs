@@ -48,7 +48,9 @@ const FILES = ['index.d.ts', 'index.js']
 // entry taught `day()  // '2026-08-08'` and that literal rotted the next day, unseen by every
 // gate. A released entry is a record, but a wrong code example in it is still copied. It stays in
 // this list forever, so a future release note carries the same duty as the README.
-const PROSE_FILES = ['README.md', 'CHANGELOG.md']
+// docs/*.md carry the calendar and CDN claims that used to live in README.md. They are gated for
+// the same reason README.md is: a moved example that stops being checked is a silent regression.
+const PROSE_FILES = ['README.md', 'CHANGELOG.md', 'docs/calendars.md', 'docs/cdn.md']
 
 /** Everything an example may reference, so the expression can be evaluated as written. */
 const scope = { ...dm }

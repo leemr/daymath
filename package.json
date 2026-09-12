@@ -30,6 +30,7 @@
     "test:runtimes:write": "node scripts/cross-runtime.mjs --write",
     "test:intl-day": "node scripts/intl-day.mjs",
     "test:examples": "node scripts/examples.mjs",
+    "test:examples:tz": "node scripts/examples-tz.mjs",
     "test:demo": "node scripts/demo-page.mjs",
     "test:split": "node scripts/split-copy.mjs",
     "test:split:write": "node scripts/split-copy.mjs --write",
@@ -77,5 +78,8 @@
     "oxfmt": "0.66.0",
     "oxlint": "1.81.0",
     "typescript": "7.0.2"
+  },
+  "allowScripts": {
+    "esbuild": true
   }
 }

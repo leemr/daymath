@@ -1,0 +1,49 @@
+name: Feature request
+description: Propose an export, an option, or a behaviour change
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Check [FUTURE.md](../blob/master/FUTURE.md) first. It carries the backlog, the blocker on
+        each row, and the semver cost, so the answer may already be written down.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What does a caller have to do today, and why is that wrong or hard?
+    validations:
+      required: true
+
+  - type: textarea
+    id: shape
+    attributes:
+      label: The call you want
+      description: Name it, and give the answer you expect for a concrete day.
+      render: js
+      placeholder: |
+        addBusinessDays('2026-08-07', 1)   // '2026-08-10'  Friday plus one
+    validations:
+      required: true
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Does this change an answer daymath gives today?
+      options:
+        - 'No, it is new surface'
+        - 'Yes, an existing call would answer differently'
+        - 'I do not know'
+    validations:
+      required: true
+
+  - type: textarea
+    id: prior
+    attributes:
+      label: What date-fns, Temporal or another library does here
+      description: >
+        daymath takes date-fns names and Temporal behaviour. Naming where the two disagree is the
+        fastest way to settle a proposal.
+    validations:
+      required: false
