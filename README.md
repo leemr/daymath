@@ -225,8 +225,11 @@ ESM only. **Node 20.19+, or 22.12+.**
 That floor is `require()`, not `import`. Node's `require(esm)` landed in 20.19 and 22.12, so
 those are the versions where `require('daymath')` works. `engines` states the range exactly,
 including the gap at 22.0–22.11. `temporal-polyfill` is ESM-only too, so a CJS build of daymath
-would not escape this. Bundlers and browsers are unaffected. A Jest consumer needs a
-`transformIgnorePatterns` entry, because Jest does not use Node's resolution.
+would not escape this. Bundlers and browsers are unaffected.
+
+**Jest needs configuration. Node, Vitest, Bun and Deno do not.** Jest brings its own resolver, so
+it skips the transform on `node_modules`, and Jest 27 also ignores the exports map. The recipe is in
+**[docs/jest.md](./docs/jest.md)**.
 
 Node 18 was supported through 0.3.0 and is dropped here. It went end-of-life in April 2025.
 

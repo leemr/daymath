@@ -50,7 +50,13 @@ const FILES = ['index.d.ts', 'index.js']
 // this list forever, so a future release note carries the same duty as the README.
 // docs/*.md carry the calendar and CDN claims that used to live in README.md. They are gated for
 // the same reason README.md is: a moved example that stops being checked is a silent regression.
-const PROSE_FILES = ['README.md', 'CHANGELOG.md', 'docs/calendars.md', 'docs/cdn.md']
+const PROSE_FILES = [
+  'README.md',
+  'CHANGELOG.md',
+  'docs/calendars.md',
+  'docs/cdn.md',
+  'docs/jest.md',
+]
 
 /** Everything an example may reference, so the expression can be evaluated as written. */
 const scope = { ...dm }

@@ -5,6 +5,17 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **[docs/jest.md](./docs/jest.md) holds the Jest recipe.** Jest skips the transform on `node_modules`, so daymath and its ESM-only dependencies need a `transformIgnorePatterns` entry on Jest 27, 29 and 30. Jest 27 also ignores the exports map, so it needs a `moduleNameMapper` entry for `temporal-utils`. That mapper breaks Jest 28 and later, so the page says to remove it on an upgrade. The page also names the Jest 30 native ESM route, and a script that prints the packages to spare. The page joined the examples gate in `PROSE_FILES`.
+
+### Changed
+
+- **The README Jest note names the runners that need no configuration**: Node, Vitest, Bun and Deno. It links to the new page.
+- **`llms.txt` links the three pages under `docs/`.** It listed none of them.
+
 ## [0.7.4] — 2026-09-12
 
 ### Added
