@@ -78,10 +78,10 @@ console.log(esm.join('|'))
 It resolves the entry file and then walks up to the owning `package.json`. It does not read
 `<name>/package.json` directly, because an exports map may refuse that path.
 
-Spare them in `jest.config.js`:
+Spare them in `jest.config.cjs`:
 
 ```js
-// jest.config.js
+// jest.config.cjs
 module.exports = {
   transformIgnorePatterns: [
     `[/\\\\]node_modules[/\\\\](?!(${ESM_DEPENDENCIES.join('|')})[/\\\\]).+\\.(js|jsx|mjs|cjs|ts|tsx)$`,
@@ -98,7 +98,7 @@ with `NODE_OPTIONS=--experimental-vm-modules`, and read the Jest ESM guide for w
 the map before you write the mapping, because the paths can change:
 
 ```
-node -p "JSON.stringify(require('temporal-utils/package.json').exports, null, 1)"
+node -p "JSON.stringify(JSON.parse(require('node:fs').readFileSync(require('node:path').resolve(require('node:path').dirname(require.resolve('temporal-utils')), '../package.json'), 'utf8')).exports, null, 1)"
 ```
 
 Jest 27 does not read that map. It looks for `temporal-utils/protected.js` at the package root,

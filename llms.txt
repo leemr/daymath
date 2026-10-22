@@ -14,7 +14,7 @@
 - Implementation: https://github.com/leemr/daymath/blob/master/index.js
 - Calendars, and where a non-ISO calendar answers wrongly: https://github.com/leemr/daymath/blob/master/docs/calendars.md
 - From a CDN, and why `?bundle` is required: https://github.com/leemr/daymath/blob/master/docs/cdn.md
-- Under Jest, including Create React App: https://github.com/leemr/daymath/blob/master/docs/jest.md
+- Under Jest:https://github.com/leemr/daymath/blob/master/docs/jest.md
 
 ## Install
 
