@@ -3,8 +3,8 @@
   "esbuild": "0.28.2",
   "gzipLevel": "Z_BEST_COMPRESSION",
   "gated": {
-    "A": 16221,
-    "B": 21658,
-    "F": 19331
+    "A": 15810,
+    "B": 21334,
+    "F": 18995
   }
 }
